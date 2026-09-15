@@ -1,7 +1,7 @@
 import * as yup from "yup";
 
 export const roomSchema = yup.object({
-  roomNumber: yup.string().required("Room number is required."),
+  roomNumber: yup.string().trim().required("Room number is required."),
   floor: yup
     .number()
     .typeError("Enter a valid floor.")
@@ -14,14 +14,19 @@ export const roomSchema = yup.object({
   capacity: yup
     .number()
     .typeError("Enter a valid capacity.")
-    .min(1)
-    .max(12)
+    .min(1, "Capacity must be at least 1.")
+    .max(12, "Capacity can be at most 12.")
     .required("Capacity is required."),
   monthlyRent: yup
     .number()
     .typeError("Enter a valid amount.")
-    .positive()
+    .positive("Rent must be greater than 0.")
     .required("Rent is required."),
+  status: yup
+    .string()
+    .oneOf(["AVAILABLE", "OCCUPIED", "FULL", "MAINTENANCE"])
+    .required("Status is required."),
+  amenities: yup.string().optional(),
 });
 
 export type RoomFormValues = yup.InferType<typeof roomSchema>;

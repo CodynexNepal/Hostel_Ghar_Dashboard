@@ -1,7 +1,6 @@
 "use client";
 import { useState } from "react";
 import { Bell, ChevronsLeft, ChevronsRight, Crown, Menu, Search } from "lucide-react";
-import { Breadcrumb } from "./Breadcrumb";
 import { useAuth } from "@/hooks/useAuth";
 import { useSidebar } from "@/hooks/useSidebar";
 import { initials } from "@/lib/utils";
@@ -28,7 +27,6 @@ export function Header({ title, subtitle }: { title: string; subtitle?: string }
           {collapsed ? <ChevronsRight className="h-5 w-5" /> : <ChevronsLeft className="h-5 w-5" />}
         </button>
         <div className="min-w-0 flex-1">
-          <Breadcrumb />
           <h1 className="truncate text-lg font-bold leading-tight text-neutral-900 sm:text-xl">
             {title}
           </h1>

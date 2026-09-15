@@ -3,16 +3,18 @@ import { Crown } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/Button";
 import Link from "next/link";
+import { env } from "@/lib/env";
 
 export function RoleSwitcher() {
   const { role, plan, switchRole, switchPlan } = useAuth();
+  if (env.isProd) return null;
   return (
     <div
       className="flex flex-wrap items-center gap-2 rounded-card border border-surface-border bg-white px-4 py-3 text-[13px]"
       role="group"
-      aria-label="Demo role and plan switcher"
+      aria-label="Dev role and plan switcher"
     >
-      <span className="font-semibold text-neutral-700">Demo:</span>
+      <span className="font-semibold text-neutral-700">Dev preview:</span>
       {(["HOSTEL_OWNER", "RESIDENT", "SUPER_ADMIN"] as const).map((r) => (
         <button
           key={r}

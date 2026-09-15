@@ -8,18 +8,25 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { registerSchema, type RegisterFormValues } from "@/schemas/auth.schema";
 import { useToast } from "@/hooks/useToast";
+import { useAuth } from "@/hooks/useAuth";
 
 export default function RegisterPage() {
   const router = useRouter();
-  const { success } = useToast();
+  const { success, error: toastError } = useToast();
+  const { register: registerUser, isAuthenticating, authError } = useAuth();
   const {
     register,
     handleSubmit,
-    formState: { errors, isSubmitting },
+    formState: { errors },
   } = useForm<RegisterFormValues>({ resolver: yupResolver(registerSchema) });
-  function onSubmit() {
-    success("Account created", "Welcome to Hostel Ghar.");
-    router.push("/dashboard");
+  async function onSubmit(data: RegisterFormValues) {
+    const ok = await registerUser(data);
+    if (ok) {
+      success("Account created", "Welcome to Hostel Ghar.");
+      // AuthProvider routes: token → role home; no token → /login?registered=1
+    } else {
+      toastError("Registration failed", authError?.message ?? "Try a different email.");
+    }
   }
   return (
     <div className="flex min-h-screen items-center justify-center bg-surface-muted px-4 py-10">
@@ -76,7 +83,12 @@ export default function RegisterPage() {
             {...register("password")}
             required
           />
-          <Button type="submit" size="lg" className="w-full" loading={isSubmitting}>
+          {authError && (
+            <p role="alert" className="rounded-md bg-red-50 px-3 py-2 text-[13px] text-red-700">
+              {authError.message}
+            </p>
+          )}
+          <Button type="submit" size="lg" className="w-full" loading={isAuthenticating}>
             Create account
           </Button>
         </form>

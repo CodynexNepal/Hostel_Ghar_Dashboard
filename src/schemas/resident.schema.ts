@@ -1,6 +1,7 @@
 import * as yup from "yup";
 
 export const residentSchema = yup.object({
+  hostelId: yup.string().trim().required("Hostel ID is required."),
   name: yup.string().min(2, "Enter the resident's full name.").required("Name is required."),
   email: yup.string().email("Enter a valid email address.").required("Email is required."),
   phone: yup

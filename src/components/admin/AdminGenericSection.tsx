@@ -5,7 +5,7 @@ import { Card, CardHeader } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 
 const LINKS: [string, string, string][] = [
-  ["Owners", "/admin/hostels", "148 owners · KYC verified"],
+  ["Owners", "/admin/owners", "148 owners · KYC verified"],
   ["Residents", "/admin/hostels", "4,280 residents platform-wide"],
   ["Subscriptions", "/subscription", "112 paid · 36 free"],
   ["Payments", "/payments", "Rs. 4.8L MRR"],

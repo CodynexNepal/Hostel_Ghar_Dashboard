@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { navigationForRole, homeRouteForRole } from "@/constants/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { useSidebar } from "@/hooks/useSidebar";
@@ -11,11 +12,16 @@ import { cn } from "@/lib/utils";
 export function Sidebar() {
   const { user, isLoading } = useAuth();
   const { collapsed, setMobileOpen } = useSidebar();
-  if (!user) {
+  const pathname = usePathname() ?? "/";
+  // While auth revalidates, show skeleton briefly — never stick on it.
+  // If loading finished with no user (logged out / session expired),
+  // fall back to URL-derived nav so /admin* still shows admin links
+  // instead of an eternal skeleton while guards redirect.
+  if (isLoading) {
     return (
       <aside
         aria-label="Primary"
-        aria-busy={isLoading}
+        aria-busy
         className={cn(
           "hidden h-screen shrink-0 flex-col gap-2 bg-brand-ink p-3 transition-[width] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] lg:flex",
           collapsed ? "w-[76px]" : "w-[264px]"
@@ -25,6 +31,50 @@ export function Sidebar() {
         <Skeleton className="h-10 w-full rounded-md bg-white/10" />
         <Skeleton className="h-10 w-full rounded-md bg-white/10" />
         <Skeleton className="h-10 w-full rounded-md bg-white/10" />
+      </aside>
+    );
+  }
+  if (!user) {
+    const fallbackRole = pathname.startsWith("/admin")
+      ? "SUPER_ADMIN"
+      : pathname.startsWith("/resident")
+        ? "RESIDENT"
+        : "HOSTEL_OWNER";
+    const nav = navigationForRole(fallbackRole);
+    const home = homeRouteForRole(fallbackRole);
+    return (
+      <aside
+        aria-label="Primary"
+        className={cn(
+          "hidden h-full shrink-0 flex-col self-stretch overflow-hidden bg-brand-ink text-neutral-200 transition-[width] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] lg:flex",
+          collapsed ? "w-[76px]" : "w-[264px]"
+        )}
+      >
+        <Link
+          href={home}
+          className="flex h-16 shrink-0 items-center gap-2.5 overflow-hidden px-4"
+          aria-label="Hostel Ghar home"
+        >
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand text-sm font-extrabold text-brand-ink">
+            HG
+          </span>
+          {!collapsed && (
+            <span className="sidebar-label whitespace-nowrap">
+              <span className="block text-[15px] font-bold leading-tight text-white">
+                Hostel Ghar
+              </span>
+              <span className="block text-[11px] font-medium leading-tight text-neutral-400">
+                SaaS Dashboard
+              </span>
+            </span>
+          )}
+        </Link>
+        <nav
+          className="sidebar-nav min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain px-2.5 pb-4 pt-1"
+          aria-label="Dashboard navigation"
+        >
+          <SidebarNavList nav={nav} collapsed={collapsed} onNavigate={() => setMobileOpen(false)} />
+        </nav>
       </aside>
     );
   }

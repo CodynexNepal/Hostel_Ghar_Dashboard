@@ -1,5 +1,4 @@
 "use client";
-import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
 import { Button } from "@/components/ui/Button";
@@ -7,57 +6,28 @@ import { Input } from "@/components/ui/Input";
 import { loginSchema, type LoginFormValues } from "@/schemas/auth.schema";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/useToast";
-import type { UserRole } from "@/types/auth";
-import { useState } from "react";
-import { cn } from "@/lib/utils";
 
 export function LoginForm() {
-  const router = useRouter();
-  const { success } = useToast();
-  const { switchRole } = useAuth();
-  const [role, setRole] = useState<UserRole>("HOSTEL_OWNER");
+  const { success, error: toastError } = useToast();
+  const { login, isAuthenticating, authError } = useAuth();
   const {
     register,
     handleSubmit,
-    formState: { errors, isSubmitting },
+    formState: { errors },
   } = useForm<LoginFormValues>({ resolver: yupResolver(loginSchema) });
 
-  function onSubmit(data: LoginFormValues) {
-    window.localStorage.setItem("hg_token", "demo-token");
-    switchRole(role);
-    success("Welcome back", data.email);
-    router.push(
-      role === "RESIDENT" ? "/resident" : role === "SUPER_ADMIN" ? "/admin" : "/dashboard"
-    );
+  async function onSubmit(data: LoginFormValues) {
+    const result = await login(data.email, data.password);
+    if (result.ok) {
+      success("Welcome back", data.email);
+      // AuthProvider already routes by role; this is a safe fallback.
+    } else {
+      toastError("Sign in failed", authError?.message ?? "Check your credentials and try again.");
+    }
   }
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="mt-6 space-y-4" noValidate>
-      <div role="radiogroup" aria-label="Sign in as" className="grid grid-cols-3 gap-2">
-        {(
-          [
-            ["HOSTEL_OWNER", "Owner"],
-            ["RESIDENT", "Resident"],
-            ["SUPER_ADMIN", "Admin"],
-          ] as [UserRole, string][]
-        ).map(([r, label]) => (
-          <button
-            key={r}
-            type="button"
-            role="radio"
-            aria-checked={role === r}
-            onClick={() => setRole(r)}
-            className={cn(
-              "rounded-md border px-2 py-2 text-[13px] font-semibold transition-colors",
-              role === r
-                ? "border-brand-ink bg-brand text-brand-ink"
-                : "border-white/15 bg-transparent text-neutral-300 hover:bg-white/10"
-            )}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
       <div className="[&_input]:border-white/15 [&_input]:bg-white/5 [&_input]:text-white [&_label]:text-neutral-200">
         <Input
           label="Email"
@@ -78,12 +48,15 @@ export function LoginForm() {
           required
         />
       </div>
-      <Button type="submit" size="lg" className="w-full" loading={isSubmitting}>
+      {authError && (
+        <p role="alert" className="rounded-md bg-red-500/10 px-3 py-2 text-[13px] text-red-200">
+          {authError.message}
+        </p>
+      )}
+      <Button type="submit" size="lg" className="w-full" loading={isAuthenticating}>
         Sign in
       </Button>
-      <p className="text-center text-xs text-neutral-500">
-        Demo only — any email + 6-char password works.
-      </p>
+      <p className="text-center text-xs text-neutral-500">Secured with Bearer token auth.</p>
     </form>
   );
 }

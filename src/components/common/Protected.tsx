@@ -24,6 +24,8 @@ export function Protected({
   const permOk = canAccess(permission);
   useEffect(() => {
     if (isLoading) return;
+    // Cookie-based auth: session lives in HttpOnly cookie + cached user.
+    // No user (and revalidation failed) → login. Wrong role → login too.
     if (!user || !roleOk) router.replace("/login");
     else if (!permOk) router.replace(redirectTo);
   }, [isLoading, user, roleOk, permOk, router, redirectTo]);

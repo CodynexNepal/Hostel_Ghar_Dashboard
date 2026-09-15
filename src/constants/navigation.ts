@@ -50,6 +50,7 @@ export const OWNER_NAVIGATION: NavItem[] = [
       { label: "All Residents", href: "/residents", permission: "VIEW_RESIDENTS" },
       { label: "Add Resident", href: "/residents/add", permission: "ADD_RESIDENT" },
       { label: "Import Residents", href: "/residents/import", permission: "IMPORT_RESIDENTS" },
+      { label: "Leaves", href: "/leaves", permission: "VIEW_RESIDENTS" },
     ],
   },
   {
@@ -76,6 +77,7 @@ export const RESIDENT_NAVIGATION: NavItem[] = [
   { label: "Payment History", href: "/resident/history", icon: Receipt },
   { label: "Facilities", href: "/resident/facilities", icon: Building2 },
   { label: "Announcements", href: "/resident/announcements", icon: FileText },
+  { label: "Leaves", href: "/resident/leaves", icon: FileText },
   { label: "Profile", href: "/resident/profile", icon: Settings },
 ];
 

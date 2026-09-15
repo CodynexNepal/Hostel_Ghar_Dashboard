@@ -5,26 +5,37 @@ export function cn(...inputs: ClassValue[]): string {
   return twMerge(clsx(inputs));
 }
 
-export function formatCurrency(npr: number): string {
-  return `Rs. ${npr.toLocaleString("en-NP")}`;
+export function formatCurrency(npr?: number | null): string {
+  const value = typeof npr === "number" && Number.isFinite(npr) ? npr : 0;
+  return `Rs. ${value.toLocaleString("en-NP")}`;
 }
 
-export function formatDate(iso: string): string {
+export function formatDate(iso?: string | null): string {
+  if (!iso || typeof iso !== "string") return "—";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
   return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 }
 
-export function initials(name: string): string {
-  return name
-    .split(" ")
-    .map((p) => p[0])
-    .slice(0, 2)
-    .join("")
-    .toUpperCase();
+export function initials(name?: string | null): string {
+  if (!name || typeof name !== "string") return "HG";
+  const trimmed = name.trim();
+  if (!trimmed) return "HG";
+  return (
+    trimmed
+      .split(/\s+/)
+      .map((p) => p[0])
+      .filter(Boolean)
+      .slice(0, 2)
+      .join("")
+      .toUpperCase() || "HG"
+  );
 }
 
-export function titleFromSegment(segment: string): string {
+export function titleFromSegment(segment?: string | null): string {
+  if (!segment || typeof segment !== "string") return "Details";
+  const value = segment.trim();
+  if (!value) return "Details";
   const map: Record<string, string> = {
     dashboard: "Dashboard",
     hostel: "Hostel",
@@ -53,12 +64,12 @@ export function titleFromSegment(segment: string): string {
     login: "Sign In",
     register: "Create Account",
   };
-  if (map[segment]) return map[segment];
+  if (map[value]) return map[value];
   // Dynamic ids (uuids, numeric ids, prefixed ids like r-1 / rm-101) read as "Details".
-  if (/^\d+$/.test(segment) || /^[0-9a-f-]{8,}$/i.test(segment) || /^[a-z]+-\d+$/i.test(segment)) {
+  if (/^\d+$/.test(value) || /^[0-9a-f-]{8,}$/i.test(value) || /^[a-z]+-\d+$/i.test(value)) {
     return "Details";
   }
-  return segment
+  return value
     .split("-")
     .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
     .join(" ");

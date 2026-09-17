@@ -5,10 +5,15 @@ import type {
   LoginResponse,
   RegisterPayload,
   RegisterResponse,
+  CreateFacilityPayload,
+  HostelFacilitySyncItem,
+  UpsertHostelFacilityPayload,
+  Facility as HostelFacility,
   CreateHostelPayload,
   CreateOwnerPayload,
   CreateResidentPayload,
   CreateRoomPayload,
+  UpdateFacilityPayload,
   UpdateRoomPayload,
   RoomListParams,
   CreateBookingPayload,
@@ -201,6 +206,63 @@ export function normalizeResident(raw: unknown): Resident {
   };
 }
 
+/**
+ * Normalize backend facility shapes into the UI `FacilityItem` shape.
+ *
+ * New hostel-scoped contract (GET /hostels/:hostelId/facilities):
+ *   { id: "<junction-uuid>", title, slug, facilityId, description, tag, clientKey }
+ * `id` in the UI is the **frontend-stable key** = `clientKey` (e.g.
+ * `security-mu5ofghs`); the junction UUID is preserved as `junctionId`.
+ *
+ * Also tolerates legacy global shapes (title/name + description/details +
+ * tag/category variants) so old cached responses still render.
+ */
+export function normalizeFacility(raw: unknown): HostelFacility {
+  const r = (raw ?? {}) as Record<string, unknown>;
+  const pick = (...keys: string[]): unknown => {
+    for (const k of keys) {
+      const v = r[k];
+      if (v !== undefined && v !== null && v !== "") return v;
+    }
+    return undefined;
+  };
+  const str = (v: unknown, fallback = ""): string =>
+    typeof v === "string" ? v : v === undefined || v === null ? fallback : String(v);
+  const clientKey = str(pick("clientKey", "client_key", "clientId", "frontendId"), "");
+  const junctionId =
+    (str(pick("junctionId", "junction_id"), "") ||
+      str(pick("id", "_id"), "")) ||
+    undefined;
+  const fallbackId =
+    clientKey ||
+    str(pick("id", "_id", "facilityId", "facility_id"), `facility-${Date.now()}`);
+  // Coerce legacy tags (Limited / Add-on / PRO hostels) to the backend enum so
+  // a stale GET row re-sent via PUT sync never trips the 400 validation error.
+  const rawTag = str(pick("tag", "category", "type"), "Included");
+  const tag =
+    rawTag === "Included" || rawTag === "Excluded" || rawTag === "Extra Charge"
+      ? rawTag
+      : /extra|charge|add-?on|paid/i.test(rawTag)
+        ? "Extra Charge"
+        : /exclud|not/i.test(rawTag)
+          ? "Excluded"
+          : "Included";
+  return {
+    id: fallbackId,
+    title: str(pick("title", "name", "facilityName", "facility_name"), "Facility"),
+    description: str(
+      pick("description", "details", "desc", "facilityDescription", "facility_description"),
+      ""
+    ),
+    tag,
+    slug: str(pick("slug"), "") || undefined,
+    facilityId: str(pick("facilityId", "facility_id", "catalogId"), "") || undefined,
+    junctionId,
+    clientKey: clientKey || undefined,
+    hostelId: (pick("hostelId", "hostel_id", "hostel") as string | undefined) ?? undefined,
+  };
+}
+
 /** Serialize a room payload to multipart FormData (image under `image` key). */
 function roomToFormData(payload: CreateRoomPayload | UpdateRoomPayload, imageFile?: File | null) {
   const form = new FormData();
@@ -368,6 +430,75 @@ export const hostelGhar = {
         multipartConfig()
       );
     },
+  },
+
+  facilities: {
+    // ------------------------------------------------------------------
+    // Hostel-scoped facilities (normalized contract).
+    // Backend envelopes: { success, data } OR { data } OR raw array.
+    // ------------------------------------------------------------------
+    /** GET /hostels/:hostelId/facilities — normalized facilities for a hostel. */
+    listByHostel: (hostelId: string) =>
+      getWithRetry<unknown>(`${PREFIX}/hostels/${hostelId}/facilities`),
+    /**
+     * PUT /hostels/:hostelId/facilities — full sync (replace).
+     * Send the whole frontend editor list; DB ends matching it.
+     * Frontend `id` maps to `clientKey`. Requires role owner/admin.
+     */
+    syncHostel: (hostelId: string, facilities: HostelFacilitySyncItem[]) =>
+      api.put<unknown>(`${PREFIX}/hostels/${hostelId}/facilities`, { facilities }),
+    /**
+     * POST /hostels/:hostelId/facilities — add (or update) one facility.
+     * Body: { id?, title, description?, tag? }.
+     */
+    createForHostel: (hostelId: string, payload: UpsertHostelFacilityPayload) =>
+      api.post<unknown>(`${PREFIX}/hostels/${hostelId}/facilities`, payload, {
+        headers: idemHeaders(newIdempotencyKey()),
+      }),
+    /**
+     * DELETE /hostels/:hostelId/facilities/:facilityKey — removes a facility.
+     * `:facilityKey` accepts the junction UUID **or** the frontend `clientKey`.
+     * Pass the clientKey by default (stable across syncs); falls back to the
+     * junction id when only that is known.
+     */
+    removeFromHostel: (hostelId: string, facilityKey: string) =>
+      api.delete<{ message?: string }>(
+        `${PREFIX}/hostels/${encodeURIComponent(hostelId)}/facilities/${encodeURIComponent(facilityKey)}`
+      ),
+    // ------------------------------------------------------------------
+    // Legacy global facilities (deprecated — backend moved to hostel scope).
+    // Kept so older callsites don't break at import time.
+    // ------------------------------------------------------------------
+    /** GET /facilities — owner facilities (?hostelId=). @deprecated use listByHostel */
+    list: (params?: ListParams) =>
+      getWithRetry<unknown[] | ApiEnvelope<unknown[]>>(`${PREFIX}/facilities`, params),
+    /** GET /facilities/:id — single facility detail. */
+    get: (id: string) =>
+      getWithRetry<unknown | ApiEnvelope<unknown>>(`${PREFIX}/facilities/${id}`),
+    /**
+     * POST /facilities — owner adds a facility (ownerId from JWT).
+     * Sends canonical fields PLUS `name`/`category` aliases so backends that
+     * validate either variant both pass (extra keys are ignored server-side).
+     */
+    create: (payload: CreateFacilityPayload) => {
+      const body = {
+        title: payload.title,
+        name: payload.name ?? payload.title,
+        description: payload.description,
+        details: payload.description,
+        tag: payload.tag,
+        category: payload.category ?? payload.tag,
+        ...(payload.hostelId ? { hostelId: payload.hostelId } : {}),
+      };
+      return api.post<unknown>(`${PREFIX}/facilities`, body, {
+        headers: idemHeaders(newIdempotencyKey()),
+      });
+    },
+    /** PATCH /facilities/:id — owner updates their facility. */
+    update: (id: string, payload: UpdateFacilityPayload) =>
+      api.patch<unknown>(`${PREFIX}/facilities/${id}`, payload),
+    /** DELETE /facilities/:id — owner removes a facility. */
+    remove: (id: string) => api.delete<{ message?: string }>(`${PREFIX}/facilities/${id}`),
   },
 
   owner: {

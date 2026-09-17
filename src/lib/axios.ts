@@ -174,7 +174,7 @@ export function toApiError(error: unknown): ApiErrorShape {
   if (axios.isAxiosError(error)) {
     const err = error as AxiosError<{
       message?: string;
-      errors?: Record<string, string[]>;
+      errors?: Record<string, string[]> | Array<{ field?: string; messages?: string[] }>;
       code?: string;
     }>;
     const status = err.response?.status ?? 0;
@@ -187,20 +187,41 @@ export function toApiError(error: unknown): ApiErrorShape {
       };
     }
 
+    // Backend may return errors as `{ field: msg[] }` OR `[{ field, messages[] }]`.
+    let errors: Record<string, string[]> | undefined;
+    if (Array.isArray(data?.errors)) {
+      errors = {};
+      for (const e of data.errors) {
+        if (e?.field) errors[e.field] = e.messages ?? [];
+      }
+    } else if (data?.errors && typeof data.errors === "object") {
+      errors = data.errors as Record<string, string[]>;
+    }
+    // Surface field messages in the banner when top-level message is generic
+    // (e.g. "Validation error" with `tag: Tag must be one of: …`).
+    const detail = errors
+      ? Object.entries(errors)
+          .map(([field, msgs]) => `${field}: ${(msgs ?? []).join(", ")}`)
+          .join("; ")
+      : "";
+    const generic = !data?.message || /^(validation error|invalid input)$/i.test(data.message);
+
     return {
       message:
-        data?.message ??
-        (status === 404
-          ? "Resource not found."
-          : status === 403
-            ? "You don't have permission to do that."
-            : status === 422
-              ? "Validation failed. Check the highlighted fields."
-              : status >= 500
-                ? "Server error. Please try again in a moment."
-                : err.message || "Something went wrong."),
+        (!generic && data?.message) ||
+        (detail
+          ? `Validation failed — ${detail}.`
+          : status === 404
+            ? "Resource not found."
+            : status === 403
+              ? "You don't have permission to do that."
+              : status === 422
+                ? "Validation failed. Check the highlighted fields."
+                : status >= 500
+                  ? "Server error. Please try again in a moment."
+                  : err.message || "Something went wrong."),
       status,
-      errors: data?.errors,
+      errors,
       code: data?.code,
     };
   }

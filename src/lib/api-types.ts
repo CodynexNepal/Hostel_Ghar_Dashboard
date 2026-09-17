@@ -217,6 +217,58 @@ export interface RecordPaymentPayload {
   month?: string;
 }
 
+/* ---------------- Facilities (hostel-scoped, normalized) ---------------- */
+
+/**
+ * Normalized hostel facility (GET /hostels/:hostelId/facilities).
+ * - `id` is the **frontend-stable key** (= backend `clientKey`, e.g. `security-mu5ofghs`).
+ *   The editor list, PUT sync payload, and POST upsert `id` all use this value.
+ * - `junctionId` is the DB junction UUID (`id` in the GET payload) — accepted
+ *   by DELETE alongside the clientKey, kept for debugging/fallback.
+ */
+export interface Facility {
+  id: string;
+  title: string;
+  description: string;
+  tag: string;
+  slug?: string;
+  facilityId?: string;
+  junctionId?: string;
+  clientKey?: string;
+  hostelId?: string;
+}
+
+/** One row of the PUT full-sync payload — frontend `id` maps to `clientKey`. */
+export interface HostelFacilitySyncItem {
+  id: string;
+  title: string;
+  description?: string;
+  tag?: string;
+}
+
+/** POST upsert body — add (or update) one facility. */
+export interface UpsertHostelFacilityPayload {
+  id?: string;
+  title: string;
+  description?: string;
+  tag?: string;
+}
+
+export interface CreateFacilityPayload {
+  title: string;
+  description: string;
+  tag: string;
+  /** Frontend-stable key → backend `clientKey` (generated when omitted). */
+  id?: string;
+  /** Scoping — owner hostel when known (also sent as name/category aliases). */
+  hostelId?: string;
+  /** Aliases for backend variants that expect `name` / `category`. */
+  name?: string;
+  category?: string;
+}
+
+export type UpdateFacilityPayload = Partial<CreateFacilityPayload>;
+
 /* ---------------- Owner dashboard / analytics ---------------- */
 export interface OwnerDashboard {
   totalResidents?: number;

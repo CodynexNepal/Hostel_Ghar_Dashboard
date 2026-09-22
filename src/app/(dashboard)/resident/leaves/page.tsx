@@ -4,6 +4,7 @@ import { Card, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Badge, statusTone } from "@/components/ui/Badge";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/hooks/useToast";
 import { useApi, useMutation } from "@/hooks/useApi";
 import { hostelGhar, toPaginated } from "@/lib/hostelGhar";
@@ -11,9 +12,14 @@ import type { LeaveRequest } from "@/lib/api-types";
 import { formatDate } from "@/lib/utils";
 import { DashboardShell } from "@/components/layout/DashboardShell";
 import { EmptyState, ErrorState } from "@/components/ui/EmptyState";
+import { useHostelLeaveTypes } from "@/hooks/useResidentDashboard";
+import { useMyRoomSummary } from "@/hooks/useMyRoomSummary";
 
 export default function ResidentLeavesPage() {
   const { success, error: toastError } = useToast();
+  const room = useMyRoomSummary();
+  const policies = useHostelLeaveTypes(room.hostelId);
+  const [leaveTypeId, setLeaveTypeId] = useState("");
   const [remarks, setRemarks] = useState("");
   const [reason, setReason] = useState("");
   const [fromDate, setFromDate] = useState("");
@@ -31,31 +37,41 @@ export default function ResidentLeavesPage() {
     (payload: Parameters<typeof hostelGhar.resident.applyLeave>[0]) =>
       hostelGhar.resident.applyLeave(payload)
   );
-
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!fromDate || !toDate) {
       toastError("Missing dates", "Pick a from and to date.");
       return;
     }
-    const result = await applyLeave({ fromDate, toDate, remarks, reason });
+    const policy = (policies.data ?? []).find((p) => p.id === leaveTypeId);
+    const result = await applyLeave({
+      fromDate,
+      toDate,
+      remarks,
+      reason,
+      ...(leaveTypeId ? { leaveTypeId } : {}),
+      ...(policy ? { type: policy.name } : {}),
+    });
     if (result) {
       success("Leave requested", `${fromDate} → ${toDate}`);
       setRemarks("");
       setReason("");
       setFromDate("");
       setToDate("");
+      setLeaveTypeId("");
       refetch();
     } else {
       toastError("Couldn't submit leave", "Try again in a moment.");
     }
   }
-
   return (
-    <DashboardShell title="My Leaves" subtitle="Apply and view your leave requests">
+    <DashboardShell title="My Leaves" subtitle="POST /resident/leaves/apply + GET /resident/leaves">
       <div className="space-y-6">
         <Card>
-          <CardHeader title="Apply for Leave" subtitle="Submit a leave request" />
+          <CardHeader
+            title="Apply for Leave"
+            subtitle={`Policies: GET /hostels/:id/leave-types (${room.hostelName})`}
+          />
           <form className="grid grid-cols-1 gap-3 p-5 sm:grid-cols-3" onSubmit={submit}>
             <Input
               label="From"
@@ -71,6 +87,31 @@ export default function ResidentLeavesPage() {
               onChange={(e) => setToDate(e.target.value)}
               required
             />
+            <div>
+              <label
+                className="mb-1 block text-[13px] font-medium text-neutral-700"
+                htmlFor="leave-type"
+              >
+                Leave type
+              </label>
+              <select
+                id="leave-type"
+                value={leaveTypeId}
+                onChange={(e) => setLeaveTypeId(e.target.value)}
+                className="h-10 w-full rounded-md border border-surface-border bg-white px-3 text-sm outline-none focus:border-brand-ink"
+              >
+                <option value="">General (no policy)</option>
+                {(policies.data ?? []).map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                    {p.maxDays ? ` · max ${p.maxDays}d` : ""}
+                  </option>
+                ))}
+              </select>
+              {policies.isLoading && (
+                <p className="mt-1 text-xs text-neutral-400">Loading policies…</p>
+              )}
+            </div>
             <Input
               label="Reason"
               value={reason}
@@ -87,15 +128,10 @@ export default function ResidentLeavesPage() {
             </div>
           </form>
         </Card>
-
         <Card>
-          <CardHeader title="My Leave Requests" subtitle="Recent requests" />
+          <CardHeader title="My Leave Requests" subtitle="GET /resident/leaves" />
           <div className="p-5">
-            {isLoading && (
-              <p role="status" className="text-sm text-neutral-500">
-                Loading…
-              </p>
-            )}
+            {isLoading && <Skeleton className="h-4 w-40" />}
             {!isLoading && error && (
               <ErrorState
                 title="Couldn't load leaves"

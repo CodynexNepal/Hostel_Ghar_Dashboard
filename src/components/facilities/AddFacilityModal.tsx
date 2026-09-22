@@ -7,11 +7,7 @@ import { Loader2 } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
-import {
-  FACILITY_TAGS,
-  facilitySchema,
-  type FacilityFormValues,
-} from "@/schemas/facility.schema";
+import { FACILITY_TAGS, facilitySchema, type FacilityFormValues } from "@/schemas/facility.schema";
 
 export interface FacilityItem {
   /** Frontend-stable key (= backend `clientKey`, e.g. `security-mu5ofghs`). */

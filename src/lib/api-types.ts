@@ -269,6 +269,40 @@ export interface CreateFacilityPayload {
 
 export type UpdateFacilityPayload = Partial<CreateFacilityPayload>;
 
+/* ---------------- Resident bulk CSV import ---------------- */
+
+export type ResidentImportStatus =
+  "QUEUED" | "PROCESSING" | "COMPLETED" | "COMPLETED_WITH_ERRORS" | "FAILED";
+
+export interface ResidentImportRowError {
+  row: number;
+  email?: string;
+  message: string;
+}
+
+export interface ResidentImport {
+  id: string;
+  hostelId: string;
+  fileName: string;
+  status: ResidentImportStatus;
+  totalRows: number;
+  validRows: number;
+  successCount: number;
+  failedCount: number;
+  rowErrors?: ResidentImportRowError[] | null;
+  failureReason?: string | null;
+  createdAt: string;
+  completedAt?: string | null;
+}
+
+export interface ResidentImportPlanLimits {
+  maxRowsPerFile: number;
+  maxFileBytes: number;
+  maxConcurrentImports: number;
+  monthlyRowBudget: number;
+  columns: string[];
+}
+
 /* ---------------- Owner dashboard / analytics ---------------- */
 export interface OwnerDashboard {
   totalResidents?: number;

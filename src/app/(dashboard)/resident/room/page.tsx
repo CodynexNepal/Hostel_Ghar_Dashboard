@@ -2,30 +2,51 @@
 import { DashboardShell } from "@/components/layout/DashboardShell";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
-import { Button } from "@/components/ui/Button";
-import { useToast } from "@/hooks/useToast";
-
-const ROWS: [string, string][] = [
-  ["Room", "201 · Floor 2 · Double sharing"],
-  ["Bed", "B1 · Lower bunk"],
-  ["Roommates", "Bibek Thapa (B2)"],
-  ["Rent", "Rs. 12,000 / month"],
-  ["Warden", "Hari Bahadur · 9841000011"],
-];
+import { Skeleton } from "@/components/ui/Skeleton";
+import { ErrorState, EmptyState } from "@/components/ui/EmptyState";
+import { formatCurrency } from "@/lib/utils";
+import { useMyRoomSummary } from "@/hooks/useMyRoomSummary";
 
 export default function ResidentRoomPage() {
-  const { success } = useToast();
+  const room = useMyRoomSummary();
+  const r = room.myRoom;
+  const rows: [string, string][] = r
+    ? [
+        ["Hostel", room.hostelName],
+        ["Room", `${r.roomNumber || "—"} · Floor ${r.floor} · Flat ${r.flat}`],
+        ["Bed", r.bedNumber || "—"],
+        ["Room type", r.roomType ?? "—"],
+        ["Rent", r.monthlyRent ? formatCurrency(r.monthlyRent) : "—"],
+      ]
+    : [];
   return (
-    <DashboardShell title="My Room" subtitle="Hostel Ghar / Resident / Room">
-      <div className="grid gap-4 lg:grid-cols-2">
+    <DashboardShell title="My Room" subtitle="GET /hostels/:id/residents → your row">
+      {room.isLoading ? (
+        <Card className="p-5">
+          <Skeleton className="h-5 w-40" />
+          <Skeleton className="mt-3 h-4 w-full" />
+          <Skeleton className="mt-2 h-4 w-5/6" />
+        </Card>
+      ) : room.error && !r ? (
+        <ErrorState
+          title="Couldn't load your room"
+          description={room.error.message}
+          onRetry={room.retry}
+        />
+      ) : !r ? (
+        <EmptyState
+          title="Room not assigned"
+          description="Your warden hasn't linked you to a room yet, or this login can't read GET /hostels/:id/residents (admin/owner only)."
+        />
+      ) : (
         <Card>
           <CardHeader
-            title="Room 201"
-            subtitle="Floor 2 · Double · Attached bath"
-            action={<Badge tone="green">OCCUPIED</Badge>}
+            title={`Room ${r.roomNumber}`}
+            subtitle={`Floor ${r.floor} · Flat ${r.flat} · Bed ${r.bedNumber}`}
+            action={<Badge tone="green">ACTIVE</Badge>}
           />
           <dl className="divide-y divide-neutral-100 px-5">
-            {ROWS.map(([k, v]) => (
+            {rows.map(([k, v]) => (
               <div key={k} className="flex items-center justify-between gap-4 py-3 text-sm">
                 <dt className="text-neutral-500">{k}</dt>
                 <dd className="text-right font-medium text-neutral-900">{v}</dd>
@@ -33,31 +54,7 @@ export default function ResidentRoomPage() {
             ))}
           </dl>
         </Card>
-        <Card>
-          <CardHeader title="Requests" subtitle="Maintenance and room changes" />
-          <div className="space-y-2 p-5">
-            {[
-              ["Fix leaking tap", "In progress"],
-              ["Change bed to upper bunk", "Pending"],
-            ].map(([t, s]) => (
-              <div
-                key={t}
-                className="flex items-center justify-between rounded-lg border border-surface-border p-3 text-sm"
-              >
-                <span className="font-medium">{t}</span>
-                <Badge tone={s === "Pending" ? "amber" : "blue"}>{s}</Badge>
-              </div>
-            ))}
-            <Button
-              variant="outline"
-              className="w-full"
-              onClick={() => success("Request sent", "Warden will review shortly.")}
-            >
-              New request
-            </Button>
-          </div>
-        </Card>
-      </div>
+      )}
     </DashboardShell>
   );
 }

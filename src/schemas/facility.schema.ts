@@ -18,7 +18,10 @@ export const facilitySchema = yup.object({
     .min(2, "Enter a short description.")
     .max(120, "Keep the description under 120 characters.")
     .required("Description is required."),
-  tag: yup.string().oneOf([...FACILITY_TAGS], "Pick a valid tag.").required("Tag is required."),
+  tag: yup
+    .string()
+    .oneOf([...FACILITY_TAGS], "Pick a valid tag.")
+    .required("Tag is required."),
 });
 
 export type FacilityFormValues = yup.InferType<typeof facilitySchema>;

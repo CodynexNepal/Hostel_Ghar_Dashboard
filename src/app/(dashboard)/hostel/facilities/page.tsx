@@ -29,8 +29,11 @@ const FALLBACK_FACILITIES: FacilityItem[] = [
 
 function slugify(title: string) {
   return (
-    title.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") ||
-    `facility-${Date.now()}`
+    title
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || `facility-${Date.now()}`
   );
 }
 
@@ -135,7 +138,8 @@ export default function FacilitiesPage() {
     // Edit = POST upsert with the existing frontend id (`clientKey`) so the row
     // is updated server-side, then full-sync so the DB matches the editor list.
     // Create = POST upsert (new `id` minted client-side), then full-sync.
-    const upsertId = editing?.clientKey ?? editing?.id ?? `${slugify(title)}-${Date.now().toString(36)}`;
+    const upsertId =
+      editing?.clientKey ?? editing?.id ?? `${slugify(title)}-${Date.now().toString(36)}`;
     const upserted = await createMutation.mutate({
       id: upsertId,
       title,

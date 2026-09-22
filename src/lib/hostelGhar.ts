@@ -25,6 +25,8 @@ import type {
   LeaveType,
   HostelDetail,
   ResidentDetail,
+  ResidentImport,
+  ResidentImportPlanLimits,
   OwnerDashboard,
   AdminSummary,
   OwnerSummary,
@@ -230,12 +232,9 @@ export function normalizeFacility(raw: unknown): HostelFacility {
     typeof v === "string" ? v : v === undefined || v === null ? fallback : String(v);
   const clientKey = str(pick("clientKey", "client_key", "clientId", "frontendId"), "");
   const junctionId =
-    (str(pick("junctionId", "junction_id"), "") ||
-      str(pick("id", "_id"), "")) ||
-    undefined;
+    str(pick("junctionId", "junction_id"), "") || str(pick("id", "_id"), "") || undefined;
   const fallbackId =
-    clientKey ||
-    str(pick("id", "_id", "facilityId", "facility_id"), `facility-${Date.now()}`);
+    clientKey || str(pick("id", "_id", "facilityId", "facility_id"), `facility-${Date.now()}`);
   // Coerce legacy tags (Limited / Add-on / PRO hostels) to the backend enum so
   // a stale GET row re-sent via PUT sync never trips the 400 validation error.
   const rawTag = str(pick("tag", "category", "type"), "Included");
@@ -473,8 +472,7 @@ export const hostelGhar = {
     list: (params?: ListParams) =>
       getWithRetry<unknown[] | ApiEnvelope<unknown[]>>(`${PREFIX}/facilities`, params),
     /** GET /facilities/:id — single facility detail. */
-    get: (id: string) =>
-      getWithRetry<unknown | ApiEnvelope<unknown>>(`${PREFIX}/facilities/${id}`),
+    get: (id: string) => getWithRetry<unknown | ApiEnvelope<unknown>>(`${PREFIX}/facilities/${id}`),
     /**
      * POST /facilities — owner adds a facility (ownerId from JWT).
      * Sends canonical fields PLUS `name`/`category` aliases so backends that
@@ -514,6 +512,47 @@ export const hostelGhar = {
       api.post<{ message: string; generated?: number }>(
         `${PREFIX}/owner/fees/generate-now`,
         payload ?? {}
+      ),
+    /** GET /owner/resident-imports/template — CSV template download (blob). */
+    residentImportTemplate: () =>
+      api.get<Blob>(`${PREFIX}/owner/resident-imports/template`, {
+        responseType: "blob",
+      }),
+    /** GET /owner/resident-imports/plan-limits — powers "View plan limits". */
+    residentImportPlanLimits: () =>
+      getWithRetry<ResidentImportPlanLimits | ApiEnvelope<ResidentImportPlanLimits>>(
+        `${PREFIX}/owner/resident-imports/plan-limits`
+      ),
+    /**
+     * POST /owner/resident-imports?hostelId=<uuid> (multipart `file`).
+     * Queues background import; returns the QUEUED history row.
+     */
+    startResidentImport: (hostelId: string, file: File, idempotencyKey?: string) => {
+      const form = new FormData();
+      form.append("file", file, file.name);
+      // The API expects multipart/form-data; leaving the default JSON content-type
+      // on the axios instance prevents the browser from generating the multipart boundary.
+      return api.post<ResidentImport | ApiEnvelope<ResidentImport>>(
+        `${PREFIX}/owner/resident-imports`,
+        form,
+        {
+          params: { hostelId },
+          headers: {
+            "Content-Type": "multipart/form-data",
+            ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
+          },
+        }
+      );
+    },
+    /** GET /owner/resident-imports — paginated import history. */
+    residentImports: (params?: ListParams & { hostelId?: string }) =>
+      getWithRetry<
+        ResidentImport[] | ApiEnvelope<ResidentImport[]> | ApiEnvelope<{ data: ResidentImport[] }>
+      >(`${PREFIX}/owner/resident-imports`, params),
+    /** GET /owner/resident-imports/:id — single import incl. row errors. */
+    residentImportDetail: (id: string) =>
+      getWithRetry<ResidentImport | ApiEnvelope<ResidentImport>>(
+        `${PREFIX}/owner/resident-imports/${id}`
       ),
   },
 

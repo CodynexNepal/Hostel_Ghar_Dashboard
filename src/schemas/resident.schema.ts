@@ -12,9 +12,12 @@ export const residentSchema = yup.object({
   bedNumber: yup.string().required("Bed is required."),
   monthlyRent: yup
     .number()
+    .transform((value, original) =>
+      original === "" || original === null || original === undefined ? undefined : value
+    )
     .typeError("Enter a valid amount.")
     .positive("Rent must be greater than 0.")
-    .required("Monthly rent is required."),
+    .optional(),
 });
 
 export type ResidentFormValues = yup.InferType<typeof residentSchema>;

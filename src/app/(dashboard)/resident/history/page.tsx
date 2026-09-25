@@ -7,13 +7,15 @@ import { EmptyState, ErrorState } from "@/components/ui/EmptyState";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { useMyFees } from "@/hooks/useResidentDashboard";
 import { useMyRoomSummary } from "@/hooks/useMyRoomSummary";
+import { useMyPaymentProofs, proofStatusLabel, proofStatusTone } from "@/lib/payment-proofs";
 
 export default function ResidentHistoryPage() {
   const room = useMyRoomSummary();
   const { data, error, isLoading, retry } = useMyFees();
+  const { byFeeId: proofByFee } = useMyPaymentProofs(room.hostelId);
   const fees = data ?? [];
   return (
-    <DashboardShell title="Payment History" subtitle={`GET /resident/fees · ${room.hostelName}`}>
+    <DashboardShell title="Payment History" subtitle={room.hostelName}>
       <Card>
         <div className="border-b border-surface-border px-5 py-4">
           <p className="text-[15px] font-semibold">Receipts</p>
@@ -38,21 +40,33 @@ export default function ResidentHistoryPage() {
           </div>
         ) : (
           <ul className="divide-y divide-neutral-100">
-            {fees.map((p) => (
-              <li key={p.id} className="flex items-center gap-3 px-5 py-3">
-                <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-semibold">
-                    {p.month ?? "Fee"} · {formatCurrency(p.amount)}
+            {fees.map((p) => {
+              const proof = proofByFee.get(String(p.id));
+              return (
+                <li key={p.id} className="flex items-center gap-3 px-5 py-3">
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-semibold">
+                      {p.month ??
+                        (p.billingMonth && p.billingYear
+                          ? `${["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][p.billingMonth - 1]} ${p.billingYear}`
+                          : "Fee")}{" "}
+                      · {formatCurrency(Number(p.totalPayable ?? p.amount))}
+                    </span>
+                    <span className="block text-xs text-neutral-500">
+                      {p.dueDate ? formatDate(p.dueDate) : ""}
+                      {p.paidAt ? ` · paid ${formatDate(p.paidAt)}` : ""}
+                      {p.method ? ` · ${p.method}` : ""}
+                    </span>
                   </span>
-                  <span className="block text-xs text-neutral-500">
-                    {p.dueDate ? formatDate(p.dueDate) : ""}
-                    {p.paidAt ? ` · paid ${formatDate(p.paidAt)}` : ""}
-                    {p.method ? ` · ${p.method}` : ""}
-                  </span>
-                </span>
-                <Badge tone={statusTone(p.status)}>{p.status}</Badge>
-              </li>
-            ))}
+                  <div className="flex items-center gap-2">
+                    <Badge tone={statusTone(p.status)}>{p.status}</Badge>
+                    {proof && (
+                      <Badge tone={proofStatusTone(proof.status)}>{proofStatusLabel(proof.status)}</Badge>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         )}
       </Card>

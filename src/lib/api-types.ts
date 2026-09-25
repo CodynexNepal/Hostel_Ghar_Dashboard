@@ -14,6 +14,8 @@ export interface PaginationMeta {
   limit: number;
   total: number;
   totalPages: number;
+  hasNextPage?: boolean;
+  hasPrevPage?: boolean;
 }
 
 export interface Paginated<T> {
@@ -99,9 +101,12 @@ export interface CreateResidentPayload {
   email: string;
   phone: string;
   hostelId: string;
+  /** Optional flat (alias of floor) — dynamic Add-Resident form field. */
+  flat?: number;
   roomNumber: string;
   bedNumber: string;
-  monthlyRent: number;
+  /** Optional — inherited from room inventory when omitted. */
+  monthlyRent?: number;
   joinedDate?: string;
 }
 
@@ -138,6 +143,33 @@ export interface RoomListParams extends ListParams {
   hostelId?: string;
 }
 
+export type BedStatus = "AVAILABLE" | "OCCUPIED" | "RESERVED" | "MAINTENANCE";
+
+export interface Bed {
+  id: string;
+  hostelId?: string;
+  roomId?: string;
+  roomNumber?: string;
+  bedNumber?: string;
+  residentName?: string | null;
+  monthlyRent?: number | string;
+  monthlyFee?: number | string;
+  rentAmount?: number | string;
+  type?: string;
+  roomType?: string;
+  status: BedStatus;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface CreateBedPayload {
+  hostelId: string;
+  roomNumber: string;
+  bedNumber: string;
+  status?: BedStatus;
+  rentAmount?: number;
+}
+
 /* ---------------- Bookings ---------------- */
 export type BookingStatus = "PENDING" | "APPROVED" | "REJECTED" | "CANCELLED" | "CONFIRMED";
 
@@ -164,18 +196,37 @@ export type LeaveStatus = "PENDING" | "APPROVED" | "REJECTED";
 
 export interface LeaveRequest {
   id: string;
+  residentId?: string;
+  resident?: {
+    id?: string;
+    roomNumber?: string;
+    bedNumber?: string;
+    monthlyRent?: string | number;
+    user?: {
+      id?: string;
+      firstName?: string;
+      lastName?: string;
+      email?: string;
+      phone?: string;
+      avatarUrl?: string | null;
+    };
+  };
   userId?: string;
   userName?: string;
   user?: { name?: string };
   hostelId?: string;
   type?: string;
   leaveTypeId?: string;
+  leaveType?: LeaveType;
   fromDate: string;
   toDate: string;
+  startDate?: string;
+  endDate?: string;
   remarks?: string;
   reason?: string;
   status: LeaveStatus;
   createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface ApplyLeavePayload {
@@ -184,7 +235,6 @@ export interface ApplyLeavePayload {
   remarks?: string;
   reason?: string;
   leaveTypeId?: string;
-  type?: string;
 }
 
 export interface LeaveType {
@@ -192,29 +242,89 @@ export interface LeaveType {
   name: string;
   hostelId?: string;
   maxDays?: number;
+  /** Backend soft-delete / active flag — inactive rows still exist in DB. */
+  isActive?: boolean;
+  requiresParentApproval?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface NormalizedLeaveType extends LeaveType {
+  description?: string;
 }
 
 /* ---------------- Fees / Payments ---------------- */
 export type FeeStatus = "PAID" | "PENDING" | "OVERDUE" | "PARTIAL";
 
+export type FeeType =
+  | "MONTHLY_HOSTEL_FEE"
+  | "ADMISSION_FEE"
+  | "SECURITY_DEPOSIT"
+  | "LATE_FEE"
+  | "MISC"
+  | string;
+
 export interface Fee {
   id: string;
   residentId?: string;
   residentName?: string;
+  resident?: {
+    id?: string;
+    name?: string;
+    fullName?: string;
+    firstName?: string;
+    lastName?: string;
+    roomNumber?: string;
+    room_number?: string;
+    room?: { roomNumber?: string; room_number?: string } | null;
+  } | null;
+  hostelId?: string;
+  feeType?: FeeType;
   amount: number;
+  dueAmount?: number;
+  totalPayable?: number;
+  paidAmount?: number;
+  billingMonth?: number;
+  billingYear?: number;
   dueDate?: string;
   month?: string;
   status: FeeStatus;
   method?: string;
   paidAt?: string;
-  hostelId?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
+
+export interface CreateFeePayload {
+  residentId: string;
+  hostelId: string;
+  amount: number;
+  dueDate: string;
+  billingMonth: number;
+  billingYear: number;
+  feeType?: FeeType;
+  dueAmount?: number;
+  paidAmount?: number;
+  status?: FeeStatus;
+}
+
+/** Domain socket events broadcast by the backend (owner/admin rooms). */
+export type DomainSocketEvent =
+  | "hostel:updated"
+  | "booking:confirmed"
+  | "leave:status_changed"
+  | "payment:processed";
 
 export interface RecordPaymentPayload {
   amount: number;
   method: "CASH" | "ESEWA" | "KHALTI" | "BANK";
   remarks?: string;
   month?: string;
+}
+
+/** Result of PATCH /fees/:id/payment. */
+export interface RecordPaymentResult extends Partial<Fee> {
+  message?: string;
 }
 
 /* ---------------- Facilities (hostel-scoped, normalized) ---------------- */
@@ -302,6 +412,182 @@ export interface ResidentImportPlanLimits {
   monthlyRowBudget: number;
   columns: string[];
 }
+
+/* ---------------- Owner: residents & form-options ---------------- */
+
+/** GET /owner/residents — active residents across all hostels owned by caller. */
+export interface OwnerResidentsParams extends ListParams {
+  hostelId?: string;
+}
+
+/** GET /owner/residents/form-options/hostels — hostel dropdown. */
+export interface OwnerHostelOption {
+  id: string;
+  name: string;
+  type?: string;
+  city?: string;
+  address?: string;
+}
+
+/** GET /owner/residents/form-options/flats — flat dropdown (flat = Room.floor). */
+export interface OwnerFlatOption {
+  flat: number;
+  floor: number;
+  roomCount: number;
+}
+
+export interface OwnerRoomBedOption {
+  value: string;
+  label: string;
+  taken?: boolean;
+  disabled?: boolean;
+}
+
+/**
+ * GET /owner/residents/form-options/rooms[ /detail] — dynamic room dropdown row.
+ * Frontend renders `label` directly; `beds` drives the Bed dropdown.
+ */
+export interface OwnerRoomOption {
+  id: string;
+  roomNumber: string;
+  flat: number;
+  floor: number;
+  type?: string;
+  capacity?: number;
+  occupiedBeds?: number;
+  freeBeds?: number;
+  freeBedsText?: string;
+  monthlyRent?: number;
+  status?: string;
+  available?: boolean;
+  disabled?: boolean;
+  group?: string;
+  reason?: string | null;
+  label: string;
+  takenBeds?: string[];
+  suggestedBeds?: string[];
+  suggestedBed?: string | null;
+  beds?: OwnerRoomBedOption[];
+  hostelLinked?: boolean;
+  hostelId?: string | null;
+}
+
+/** POST /owner/leave-types — create a leave (holiday) policy. */
+export interface CreateLeaveTypePayload {
+  hostelId: string;
+  name: string;
+  maxDays?: number;
+}
+
+/** POST /fees/generate-monthly & POST /owner/fees/generate-now. */
+export interface GenerateFeesPayload {
+  hostelId?: string;
+  month?: string;
+  year?: number | string;
+  [key: string]: string | number | boolean | undefined;
+}
+
+/** Result of POST /fees/generate-monthly. */
+export interface GenerateFeesResult {
+  message?: string;
+  generated?: number;
+  skipped?: number;
+  billingMonth?: number;
+  billingYear?: number;
+}
+
+/* ---------------- Payment QRs ---------------- */
+
+/**
+ * Backend `paymentQrRouter` record.
+ * Canonical backend DTO: `paymentMethod` (ESEWA | KHALTI | BANK_TRANSFER),
+ * `accountName` (e.g. "Sunrise Hostel"), `accountIdentifier`
+ * (e.g. eSewa/Khalti phone or bank A/C), `qrCodeUrl`.
+ * Legacy aliases (`method`/`tag`, `label`, `imageUrl`) still tolerated on read.
+ */
+export type PaymentQrMethod = "ESEWA" | "KHALTI" | "BANK";
+
+export type BackendPaymentMethod = "ESEWA" | "KHALTI" | "BANK_TRANSFER";
+
+export interface PaymentQr {
+  id: string;
+  /** Canonical backend enum. */
+  paymentMethod?: BackendPaymentMethod | string;
+  /** e.g. "Sunrise Hostel". */
+  accountName?: string;
+  /** e.g. eSewa/Khalti phone number or bank account number. */
+  accountIdentifier?: string;
+  // ── legacy aliases (read-tolerant, never sent) ──
+  /** eSewa / Khalti / Bank — backend may call this `tag` or `provider`. */
+  method?: PaymentQrMethod | string;
+  tag?: PaymentQrMethod | string;
+  provider?: PaymentQrMethod | string;
+  /** Human label shown under the QR (account id / bank + A/C). */
+  label?: string;
+  accountLabel?: string;
+  accountNumber?: string;
+  /** QR image URL (or data-URL). Backend may use `image`, `qr`, `file`. */
+  qrCodeUrl?: string;
+  imageUrl?: string;
+  qrUrl?: string;
+  image?: string;
+  url?: string;
+  hostelId?: string;
+  hostelName?: string;
+  isActive?: boolean;
+  status?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  [key: string]: unknown;
+}
+
+export interface PaymentQrListParams extends ListParams {
+  hostelId?: string;
+  paymentMethod?: string;
+  method?: string;
+  tag?: string;
+  status?: string;
+  active?: boolean;
+}
+
+export interface LoadDemoQrPayload {
+  hostelId?: string;
+  hostelName?: string;
+  [key: string]: string | number | boolean | undefined;
+}
+
+export interface CreatePaymentQrPayload {
+  hostelId?: string;
+  /**
+   * Canonical backend enum: ESEWA | KHALTI | BANK_TRANSFER.
+   * Frontend `BANK` is auto-mapped to `BANK_TRANSFER` on send.
+   */
+  paymentMethod?: BackendPaymentMethod | string;
+  /** e.g. "Sunrise Hostel" (required by backend). */
+  accountName?: string;
+  /** e.g. eSewa/Khalti phone or bank A/C number (required by backend). */
+  accountIdentifier?: string;
+  // ── frontend conveniences (mapped to canonical fields on send, never sent raw) ──
+  /** ESEWA | KHALTI | BANK — mapped to `paymentMethod`. */
+  method?: PaymentQrMethod | string;
+  tag?: PaymentQrMethod | string;
+  provider?: PaymentQrMethod | string;
+  /** Combined "Bank • A/C …" text — split into accountName/accountIdentifier on send. */
+  label?: string;
+  accountLabel?: string;
+  accountNumber?: string;
+  /** JSON path (when no file upload): direct QR image URL. */
+  qrCodeUrl?: string;
+  imageUrl?: string;
+  isActive?: boolean;
+  status?: string;
+  /** File upload path — sent as multipart `qrCode`. */
+  file?: File | null;
+  [key: string]: unknown;
+}
+
+export type UpdatePaymentQrPayload = Partial<CreatePaymentQrPayload>;
+export type PatchPaymentQrPayload = Partial<CreatePaymentQrPayload>;
 
 /* ---------------- Owner dashboard / analytics ---------------- */
 export interface OwnerDashboard {

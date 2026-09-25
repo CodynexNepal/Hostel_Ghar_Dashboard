@@ -17,15 +17,25 @@ import { useApi, useMutation } from "@/hooks/useApi";
 import { hostelGhar, toPaginated } from "@/lib/hostelGhar";
 import { TableSkeleton } from "@/components/ui/Skeleton";
 import { EmptyState, ErrorState } from "@/components/ui/EmptyState";
-import { Plus } from "lucide-react";
+import { Plus, QrCode } from "lucide-react";
 import { useMemo, useState } from "react";
+import { PaymentQrSettings } from "@/components/payments/PaymentQrSettings";
+import { PaymentProofReview } from "@/components/payments/PaymentProofReview";
+import { useHostelPaymentProofs, proofStatusTone, proofStatusLabel } from "@/lib/payment-proofs";
 
 export default function PaymentsPage() {
   const { success, error: toastError } = useToast();
   const { user } = useAuth();
   const hostelId = user?.hostelId;
   const [open, setOpen] = useState(false);
+  const [showQrSettings, setShowQrSettings] = useState(false);
   const [feeFilter, setFeeFilter] = useState("");
+  const { proofs, pendingCount, isLoading: proofsLoading, refetch: refetchProofs } =
+    useHostelPaymentProofs(hostelId);
+  const proofByFee = useMemo(
+    () => new Map(proofs.map((p) => [String(p.feeId), p])),
+    [proofs]
+  );
   const {
     data: fees,
     error: feesError,
@@ -63,8 +73,40 @@ export default function PaymentsPage() {
         method: method as "CASH" | "ESEWA" | "KHALTI" | "BANK",
       })
   );
+  const { mutate: generateNow, isPending: isGenerating } = useMutation(
+    (hostelId: string) => hostelGhar.fees.generateMonthly({ hostelId })
+  );
+  async function handleGenerateFees() {
+    if (!hostelId) {
+      toastError("No hostel linked", "Link your account to a hostel first.");
+      return;
+    }
+    // POST /fees/generate-monthly — owner/admin only. Falls back to the
+    // owner-scoped trigger when the canonical route is unavailable.
+    let result = await generateNow(hostelId);
+    if (!result) {
+      try {
+        const fb = await hostelGhar.owner.generateFeesNow({ hostelId });
+        result = fb as unknown as typeof result;
+      } catch {
+        /* keep null — toast below */
+      }
+    }
+    if (result) {
+      const payload = result as unknown as { message?: string; generated?: number };
+      success(
+        "Fee generation triggered",
+        payload.generated !== undefined
+          ? `${payload.generated} fees generated.`
+          : (payload.message ?? "Monthly ledger is generating.")
+      );
+      refetchFees();
+    } else {
+      toastError("Couldn't generate fees", "Try again in a moment.");
+    }
+  }
   async function onSubmit(d: PaymentFormValues) {
-    // Map legacy residentId select → feeId. Backend records payment per fee.
+    // PATCH /fees/:id/payment — owner/admin records payment per fee.
     const feeId = d.residentId;
     const result = await recordPayment({
       feeId,
@@ -118,6 +160,15 @@ export default function PaymentsPage() {
       sortable: true,
       render: (p) => <Badge tone={statusTone(p.status)}>{p.status}</Badge>,
     },
+    {
+      key: "receipt",
+      header: "Receipt",
+      render: (p) => {
+        const proof = proofByFee.get(String(p.id));
+        if (!proof) return <span className="text-xs text-neutral-400">—</span>;
+        return <Badge tone={proofStatusTone(proof.status)}>{proofStatusLabel(proof.status)}</Badge>;
+      },
+    },
   ];
   return (
     <DashboardShell
@@ -155,10 +206,33 @@ export default function PaymentsPage() {
               </button>
             ))}
           </div>
-          <Button onClick={() => setOpen((o) => !o)}>
-            <Plus className="h-4 w-4" /> Record Payment
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setShowQrSettings((s) => !s)}
+              className="gap-1.5"
+            >
+              <QrCode className="h-4 w-4" /> {showQrSettings ? "Hide Payment QRs" : "Payment QRs"}
+            </Button>
+            <Button onClick={() => setOpen((o) => !o)}>
+              <Plus className="h-4 w-4" /> Record Payment
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => void handleGenerateFees()}
+              loading={isGenerating}
+              disabled={!hostelId}
+              title={hostelId ? "Generate this month's fee ledger" : "Link a hostel first"}
+            >
+              Generate Monthly Fees
+            </Button>
+          </div>
         </div>
+        {showQrSettings && (
+          <div className="mb-4">
+            <PaymentQrSettings />
+          </div>
+        )}
         {open && (
           <Card className="mb-4 border-brand-ink p-5">
             <form
@@ -185,7 +259,7 @@ export default function PaymentsPage() {
                     ))}
                 </select>
                 <p className="mt-1 text-xs text-neutral-500">
-                  Payments are recorded per fee (PATCH /fees/:id/payment).
+                  Payments are recorded against the selected fee.
                 </p>
                 {errors.residentId && (
                   <p className="mt-1 text-xs text-red-600">{errors.residentId.message}</p>
@@ -271,6 +345,16 @@ export default function PaymentsPage() {
             )}
           />
         )}
+        <div className="mt-6">
+          <PaymentProofReview
+            proofs={proofs}
+            isLoading={proofsLoading}
+            onChanged={() => {
+              void refetchProofs();
+              void refetchFees();
+            }}
+          />
+        </div>
       </Protected>
     </DashboardShell>
   );

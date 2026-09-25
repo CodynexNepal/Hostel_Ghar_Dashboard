@@ -33,6 +33,12 @@ export default function LeavesIndexPage() {
   return (
     <DashboardShell title="Leave Requests" subtitle="Hostel-level leave management">
       <Protected permission="VIEW_RESIDENTS">
+        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-neutral-500">Manage requests and holiday policies.</p>
+          <Link href="/leaves/types">
+            <Button variant="outline">Manage Leave Types</Button>
+          </Link>
+        </div>
         <div className="space-y-6">
           <Card>
             <CardHeader

@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -15,6 +16,57 @@ import { EmptyState, ErrorState } from "@/components/ui/EmptyState";
 import { useHostelLeaveTypes } from "@/hooks/useResidentDashboard";
 import { useMyRoomSummary } from "@/hooks/useMyRoomSummary";
 
+type LeavePagination = {
+  totalItems: number;
+  currentPage: number;
+  totalPages: number;
+  itemsPerPage: number;
+  hasNextPage: boolean;
+  hasPrevPage: boolean;
+};
+
+type LeaveListState = {
+  items: LeaveRequest[];
+  pagination: LeavePagination;
+};
+
+function normalizeLeave(raw: LeaveRequest): LeaveRequest {
+  return {
+    ...raw,
+    type: raw.type ?? raw.leaveType?.name,
+    fromDate: raw.fromDate ?? raw.startDate ?? "",
+    toDate: raw.toDate ?? raw.endDate ?? "",
+    remarks: raw.remarks ?? raw.reason,
+  };
+}
+
+function readLeaveListState(
+  payload: unknown,
+  items: LeaveRequest[],
+  fallbackPage: number,
+  fallbackLimit: number
+): LeaveListState {
+  const root = (payload ?? {}) as {
+    pagination?: Partial<LeavePagination>;
+  };
+  const totalItems = Number(root.pagination?.totalItems ?? items.length);
+  const currentPage = Number(root.pagination?.currentPage ?? fallbackPage);
+  const totalPages = Math.max(1, Number(root.pagination?.totalPages ?? 1));
+  const itemsPerPage = Number(root.pagination?.itemsPerPage ?? fallbackLimit);
+
+  return {
+    items,
+    pagination: {
+      totalItems,
+      currentPage,
+      totalPages,
+      itemsPerPage,
+      hasNextPage: Boolean(root.pagination?.hasNextPage ?? currentPage < totalPages),
+      hasPrevPage: Boolean(root.pagination?.hasPrevPage ?? currentPage > 1),
+    },
+  };
+}
+
 export default function ResidentLeavesPage() {
   const { success, error: toastError } = useToast();
   const room = useMyRoomSummary();
@@ -24,53 +76,80 @@ export default function ResidentLeavesPage() {
   const [reason, setReason] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(20);
+
   const {
-    data: leaves,
+    data: leaveState,
     error,
     isLoading,
+    isRefetching,
     refetch,
-  } = useApi(async () => {
-    const res = await hostelGhar.resident.leaves();
-    return toPaginated<LeaveRequest>(res.data).items;
-  }, []);
+  } = useApi<LeaveListState>(async () => {
+    const res = await hostelGhar.resident.leaves({ page, limit });
+    const items = toPaginated<LeaveRequest>(res.data).items.map(normalizeLeave);
+    return readLeaveListState(res.data, items, page, limit);
+  }, [page, limit]);
+
   const { mutate: applyLeave, isPending: isApplying } = useMutation(
     (payload: Parameters<typeof hostelGhar.resident.applyLeave>[0]) =>
       hostelGhar.resident.applyLeave(payload)
   );
+
+  const leaves = leaveState?.items ?? [];
+  const pagination =
+    leaveState?.pagination ??
+    ({
+      totalItems: leaves.length,
+      currentPage: page,
+      totalPages: 1,
+      itemsPerPage: limit,
+      hasNextPage: false,
+      hasPrevPage: page > 1,
+    } satisfies LeavePagination);
+  const rangeStart =
+    pagination.totalItems === 0 ? 0 : (pagination.currentPage - 1) * pagination.itemsPerPage + 1;
+  const rangeEnd = Math.min(
+    pagination.totalItems,
+    pagination.currentPage * pagination.itemsPerPage
+  );
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!fromDate || !toDate) {
       toastError("Missing dates", "Pick a from and to date.");
       return;
     }
-    const policy = (policies.data ?? []).find((p) => p.id === leaveTypeId);
+    // Backend whitelist: { fromDate, toDate, remarks?, reason?, leaveTypeId? }.
+    // Never send `type`; backend rejects it with "property type should not exist".
     const result = await applyLeave({
       fromDate,
       toDate,
       remarks,
       reason,
       ...(leaveTypeId ? { leaveTypeId } : {}),
-      ...(policy ? { type: policy.name } : {}),
     });
     if (result) {
-      success("Leave requested", `${fromDate} → ${toDate}`);
+      success("Leave requested", `${fromDate} to ${toDate}`);
       setRemarks("");
       setReason("");
       setFromDate("");
       setToDate("");
       setLeaveTypeId("");
-      refetch();
+      if (page === 1) refetch();
+      else setPage(1);
     } else {
       toastError("Couldn't submit leave", "Try again in a moment.");
     }
   }
+
   return (
-    <DashboardShell title="My Leaves" subtitle="POST /resident/leaves/apply + GET /resident/leaves">
+    <DashboardShell title="My Leaves" subtitle={room.hostelName}>
       <div className="space-y-6">
         <Card>
           <CardHeader
             title="Apply for Leave"
-            subtitle={`Policies: GET /hostels/:id/leave-types (${room.hostelName})`}
+            subtitle={`Policies for ${room.hostelName}`}
           />
           <form className="grid grid-cols-1 gap-3 p-5 sm:grid-cols-3" onSubmit={submit}>
             <Input
@@ -104,12 +183,12 @@ export default function ResidentLeavesPage() {
                 {(policies.data ?? []).map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name}
-                    {p.maxDays ? ` · max ${p.maxDays}d` : ""}
+                    {p.maxDays ? ` - max ${p.maxDays}d` : ""}
                   </option>
                 ))}
               </select>
               {policies.isLoading && (
-                <p className="mt-1 text-xs text-neutral-400">Loading policies…</p>
+                <p className="mt-1 text-xs text-neutral-400">Loading policies...</p>
               )}
             </div>
             <Input
@@ -128,8 +207,12 @@ export default function ResidentLeavesPage() {
             </div>
           </form>
         </Card>
+
         <Card>
-          <CardHeader title="My Leave Requests" subtitle="GET /resident/leaves" />
+          <CardHeader
+            title="My Leave Requests"
+            subtitle="Your submitted leave requests"
+          />
           <div className="p-5">
             {isLoading && <Skeleton className="h-4 w-40" />}
             {!isLoading && error && (
@@ -139,30 +222,107 @@ export default function ResidentLeavesPage() {
                 onRetry={refetch}
               />
             )}
-            {!isLoading && !error && (!leaves || leaves.length === 0) && (
+            {!isLoading && !error && leaves.length === 0 && (
               <EmptyState
                 title="No leave requests"
                 description="Your approved and pending leaves will show here."
               />
             )}
-            <ul className="divide-y">
-              {(leaves ?? []).map((l) => (
-                <li key={l.id} className="py-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <div className="font-medium">{l.type ?? "Leave"}</div>
-                      <div className="text-sm text-neutral-500">
-                        {formatDate(l.fromDate)} — {formatDate(l.toDate)}
+
+            {!isLoading && !error && leaves.length > 0 && (
+              <>
+                <div className="mb-3 flex flex-col gap-2 text-sm text-neutral-500 sm:flex-row sm:items-center sm:justify-between">
+                  <span>
+                    Showing {rangeStart}-{rangeEnd} of {pagination.totalItems}
+                    {isRefetching ? " - refreshing" : ""}
+                  </span>
+                  <label className="flex items-center gap-2">
+                    <span>Rows</span>
+                    <select
+                      value={limit}
+                      onChange={(e) => {
+                        setLimit(Number(e.target.value));
+                        setPage(1);
+                      }}
+                      className="h-9 rounded-md border border-surface-border bg-white px-2 text-sm outline-none focus:border-brand-ink"
+                    >
+                      {[10, 20, 50].map((size) => (
+                        <option key={size} value={size}>
+                          {size}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+
+                <ul className="divide-y">
+                  {leaves.map((leave) => (
+                    <li key={leave.id} className="py-3">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0">
+                          <div className="font-medium">
+                            {leave.type ?? leave.leaveType?.name ?? "Leave"}
+                          </div>
+                          <div className="mt-1 text-sm text-neutral-500">
+                            {formatDate(leave.fromDate)} to {formatDate(leave.toDate)}
+                          </div>
+                          {leave.leaveType && (
+                            <div className="mt-1 text-xs text-neutral-500">
+                              Max {leave.leaveType.maxDays ?? "-"} days
+                              {leave.leaveType.requiresParentApproval
+                                ? " - parent approval required"
+                                : ""}
+                            </div>
+                          )}
+                          {leave.createdAt && (
+                            <div className="mt-1 text-xs text-neutral-400">
+                              Requested {formatDate(leave.createdAt)}
+                            </div>
+                          )}
+                          {(leave.remarks || leave.reason) && (
+                            <p className="mt-2 text-sm text-neutral-700">
+                              {leave.reason ?? leave.remarks}
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex shrink-0 flex-col items-start gap-2 sm:items-end">
+                          <Badge tone={statusTone(leave.status)}>{leave.status}</Badge>
+                          <div className="font-mono text-[11px] text-neutral-400">
+                            {leave.id.slice(0, 8)}
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                    <Badge tone={statusTone(l.status)}>{l.status}</Badge>
+                    </li>
+                  ))}
+                </ul>
+
+                <div className="mt-4 flex items-center justify-between gap-2 border-t border-surface-border pt-3">
+                  <p className="text-xs text-neutral-500">
+                    Page {pagination.currentPage} of {pagination.totalPages}
+                  </p>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      disabled={!pagination.hasPrevPage || isRefetching}
+                      aria-label="Previous page"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setPage((p) => Math.min(pagination.totalPages, p + 1))}
+                      disabled={!pagination.hasNextPage || isRefetching}
+                      aria-label="Next page"
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
                   </div>
-                  {(l.remarks || l.reason) && (
-                    <p className="mt-2 text-sm text-neutral-700">{l.reason ?? l.remarks}</p>
-                  )}
-                </li>
-              ))}
-            </ul>
+                </div>
+              </>
+            )}
           </div>
         </Card>
       </div>

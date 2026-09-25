@@ -128,8 +128,7 @@ export default function SubscriptionPage() {
           })}
         </div>
         <p className="mt-4 text-center text-xs text-neutral-400">
-          Prices in NPR. Plan switching is mocked — wire to{" "}
-          <span className="font-medium">POST /billing/subscribe</span> when the backend is ready.
+          Prices in NPR. Plan switching is mocked until billing is connected.
         </p>
       </Protected>
     </DashboardShell>

@@ -18,7 +18,7 @@ export function LimitsModal({
       open={open}
       onClose={onClose}
       title="Plan limits — bulk import"
-      description="Enforced by POST /owner/resident-imports before queueing."
+      description="Checked before each import is queued."
     >
       {loading ? (
         <p className="text-sm text-neutral-500">Loading limits…</p>

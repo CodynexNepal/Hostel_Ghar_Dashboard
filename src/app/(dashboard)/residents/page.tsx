@@ -115,6 +115,15 @@ export default function ResidentsPage() {
     refetch,
   } = useApi<Resident[]>(async () => {
     const hostelId = await resolveHostelId(user?.hostelId);
+    // GET /owner/residents — owner-scoped list across ALL owned hostels (same shape).
+    // Falls back to the hostel-scoped list only when the owner endpoint is unavailable.
+    try {
+      const res = await hostelGhar.owner.residents(hostelId ? { hostelId } : undefined);
+      const items = toPaginated<unknown>(unwrap<unknown>(res.data)).items.map(normalizeResident);
+      if (items.length > 0 || !hostelId) return items;
+    } catch {
+      /* fall through to hostel-scoped list */
+    }
     if (!hostelId) return [];
     const res = await hostelGhar.hostels.residents(hostelId);
     const raw = unwrap<unknown>(res.data);

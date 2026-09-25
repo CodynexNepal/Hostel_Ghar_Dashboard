@@ -4,52 +4,60 @@ import { Card, CardHeader } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { ErrorState, EmptyState } from "@/components/ui/EmptyState";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, formatDate } from "@/lib/utils";
 import { useMyRoomSummary } from "@/hooks/useMyRoomSummary";
 
 export default function ResidentRoomPage() {
   const room = useMyRoomSummary();
-  const r = room.myRoom;
-  const rows: [string, string][] = r
+  const resident = room.myRoom;
+  const address = [resident?.hostel?.address, resident?.hostel?.city].filter(Boolean).join(", ");
+  const rows: [string, string][] = resident
     ? [
+        ["Resident", resident.fullName],
         ["Hostel", room.hostelName],
-        ["Room", `${r.roomNumber || "—"} · Floor ${r.floor} · Flat ${r.flat}`],
-        ["Bed", r.bedNumber || "—"],
-        ["Room type", r.roomType ?? "—"],
-        ["Rent", r.monthlyRent ? formatCurrency(r.monthlyRent) : "—"],
+        ["Address", address || "-"],
+        ["Room", resident.roomNumber || "-"],
+        ["Bed", resident.bedNumber || "-"],
+        ["Room type", resident.roomType ?? "-"],
+        ["Floor / Flat", `Floor ${resident.floor || "-"} / Flat ${resident.flat || "-"}`],
+        ["Monthly rent", resident.monthlyRent ? formatCurrency(resident.monthlyRent) : "-"],
+        ["Joined", resident.joinedDate ? formatDate(resident.joinedDate) : "-"],
+        ["Phone", resident.phone ?? "-"],
+        ["Email", resident.email || "-"],
       ]
     : [];
+
   return (
-    <DashboardShell title="My Room" subtitle="GET /hostels/:id/residents → your row">
+    <DashboardShell title="My Room" subtitle={room.hostelName}>
       {room.isLoading ? (
         <Card className="p-5">
           <Skeleton className="h-5 w-40" />
           <Skeleton className="mt-3 h-4 w-full" />
           <Skeleton className="mt-2 h-4 w-5/6" />
         </Card>
-      ) : room.error && !r ? (
+      ) : room.error && !resident ? (
         <ErrorState
           title="Couldn't load your room"
           description={room.error.message}
           onRetry={room.retry}
         />
-      ) : !r ? (
+      ) : !resident ? (
         <EmptyState
           title="Room not assigned"
-          description="Your warden hasn't linked you to a room yet, or this login can't read GET /hostels/:id/residents (admin/owner only)."
+          description="Your warden hasn't linked you to a room yet."
         />
       ) : (
         <Card>
           <CardHeader
-            title={`Room ${r.roomNumber}`}
-            subtitle={`Floor ${r.floor} · Flat ${r.flat} · Bed ${r.bedNumber}`}
+            title={resident.fullName}
+            subtitle={`Room ${resident.roomNumber || "-"} - Bed ${resident.bedNumber || "-"}`}
             action={<Badge tone="green">ACTIVE</Badge>}
           />
           <dl className="divide-y divide-neutral-100 px-5">
-            {rows.map(([k, v]) => (
-              <div key={k} className="flex items-center justify-between gap-4 py-3 text-sm">
-                <dt className="text-neutral-500">{k}</dt>
-                <dd className="text-right font-medium text-neutral-900">{v}</dd>
+            {rows.map(([label, value]) => (
+              <div key={label} className="flex items-center justify-between gap-4 py-3 text-sm">
+                <dt className="text-neutral-500">{label}</dt>
+                <dd className="text-right font-medium text-neutral-900">{value}</dd>
               </div>
             ))}
           </dl>

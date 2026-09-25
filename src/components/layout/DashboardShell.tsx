@@ -25,9 +25,6 @@ export function DashboardShell({
           <main className="mx-auto w-full min-w-0 max-w-[1280px] px-4 py-5 sm:px-6">
             {children}
           </main>
-          <footer className="border-t border-surface-border bg-white px-6 py-3 text-center text-xs text-neutral-400 sm:text-left">
-            Hostel Ghar · Frontend gating is UX-only — backend enforces authorization.
-          </footer>
         </div>
       </div>
     </div>

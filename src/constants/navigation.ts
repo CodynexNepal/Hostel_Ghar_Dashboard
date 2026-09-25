@@ -39,6 +39,7 @@ export const OWNER_NAVIGATION: NavItem[] = [
     children: [
       { label: "Overview", href: "/hostel", permission: "VIEW_HOSTEL" },
       { label: "Rooms", href: "/rooms", permission: "MANAGE_ROOMS" },
+      { label: "Beds", href: "/beds", permission: "MANAGE_ROOMS" },
       { label: "Facilities", href: "/hostel/facilities", permission: "VIEW_HOSTEL" },
     ],
   },
@@ -51,6 +52,7 @@ export const OWNER_NAVIGATION: NavItem[] = [
       { label: "Add Resident", href: "/residents/add", permission: "ADD_RESIDENT" },
       { label: "Import Residents", href: "/residents/import", permission: "IMPORT_RESIDENTS" },
       { label: "Leaves", href: "/leaves", permission: "VIEW_RESIDENTS" },
+      { label: "Leave Types", href: "/leaves/types", permission: "VIEW_RESIDENTS" },
     ],
   },
   {
@@ -59,6 +61,8 @@ export const OWNER_NAVIGATION: NavItem[] = [
     permission: "MANAGE_PAYMENTS",
     children: [
       { label: "Payments", href: "/payments", permission: "MANAGE_PAYMENTS" },
+      { label: "Payment QRs", href: "/settings#payment-qrs", permission: "MANAGE_SETTINGS" },
+      { label: "Fees", href: "/fees", permission: "MANAGE_PAYMENTS" },
       { label: "Expenses", href: "/expenses", permission: "MANAGE_EXPENSES" },
       { label: "Invoices", href: "/invoices", permission: "MANAGE_INVOICES" },
     ],

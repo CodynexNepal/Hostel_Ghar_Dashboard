@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { BedDouble, CalendarClock, Receipt, Wallet } from "lucide-react";
+import { BedDouble, CalendarClock, Receipt, Wallet, QrCode } from "lucide-react";
 import { DashboardShell } from "@/components/layout/DashboardShell";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Badge, statusTone } from "@/components/ui/Badge";
@@ -144,7 +144,7 @@ export default function ResidentDashboardPage() {
                 </Link>
                 <Link href="/resident/payments">
                   <Button size="sm">
-                    <Wallet className="h-3.5 w-3.5" /> Pay rent
+                    <QrCode className="h-3.5 w-3.5" /> Pay via QR
                   </Button>
                 </Link>
               </div>
@@ -152,7 +152,7 @@ export default function ResidentDashboardPage() {
             <Card>
               <CardHeader
                 title="Recent payments"
-                subtitle="GET /resident/fees"
+                subtitle="Latest fee records"
                 action={
                   <Link
                     href="/resident/history"
@@ -192,18 +192,27 @@ export default function ResidentDashboardPage() {
                 </ul>
               )}
             </Card>
-            <Card className="flex items-center gap-3 border-dashed p-5 text-sm text-neutral-600">
-              <CalendarClock className="h-5 w-5 shrink-0" />
-              {due ? (
-                <span>
-                  Next rent due{" "}
-                  <strong>{due.dueDate ? formatDate(due.dueDate) : (due.month ?? "")}</strong> —{" "}
-                  {formatCurrency(due.amount)}.
-                </span>
-              ) : (
-                <span>
-                  <strong>All clear 🎉</strong> — no pending dues.
-                </span>
+            <Card className="flex flex-col gap-3 border-dashed p-5 text-sm text-neutral-600 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-3">
+                <CalendarClock className="h-5 w-5 shrink-0" />
+                {due ? (
+                  <span>
+                    Next rent due{" "}
+                    <strong>{due.dueDate ? formatDate(due.dueDate) : (due.month ?? "")}</strong> —{" "}
+                    {formatCurrency(due.amount)}.
+                  </span>
+                ) : (
+                  <span>
+                    <strong>All clear 🎉</strong> — no pending dues.
+                  </span>
+                )}
+              </div>
+              {due && (
+                <Link href="/resident/payments">
+                  <Button size="sm" variant="outline" className="gap-1.5 shrink-0 text-xs">
+                    <QrCode className="h-3.5 w-3.5 text-brand-ink" /> View QR Code
+                  </Button>
+                </Link>
               )}
             </Card>
           </div>

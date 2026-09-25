@@ -19,12 +19,21 @@ export interface ResidentRoomRow {
   flat: number;
   monthlyRent?: number;
   phone?: string;
+  joinedDate?: string;
+  imageUrl?: string | null;
+  fee?: unknown;
 }
 
 export function normalizeResidentRoom(raw: unknown): ResidentRoomRow {
   const r = (raw ?? {}) as Record<string, unknown>;
   const str = (v: unknown, fb = ""): string =>
     typeof v === "string" ? v : v === undefined || v === null ? fb : String(v);
+  const cleanEmail = (v: unknown): string => {
+    const value = str(v);
+    const markdownMatch = value.match(/\[([^\]]+)\]/);
+    const email = markdownMatch?.[1] ?? value;
+    return email.replace(/^https?:\/\//i, "").replace(/^www\./i, "");
+  };
   const num = (v: unknown, fb = 0): number => {
     const n = typeof v === "string" ? Number(v) : (v as number);
     return Number.isFinite(n) ? n : fb;
@@ -43,7 +52,7 @@ export function normalizeResidentRoom(raw: unknown): ResidentRoomRow {
   return {
     id: str(pick("id", "_id", "residentId")),
     fullName: str(pick("fullName", "full_name", "name", "residentName")) || "Resident",
-    email: str(pick("email", "residentEmail")),
+    email: cleanEmail(pick("email", "residentEmail")),
     hostelId: str(pick("hostelId", "hostel_id") ?? (hostelObj as { id?: unknown } | null)?.id),
     hostelName:
       str(pick("hostelName", "hostel_name")) || str((hostelObj as { name?: unknown } | null)?.name),
@@ -60,6 +69,9 @@ export function normalizeResidentRoom(raw: unknown): ResidentRoomRow {
       return Number.isFinite(n) ? n : undefined;
     })(),
     phone: str(pick("phone", "phoneNumber"), "") || undefined,
+    joinedDate: str(pick("joinedDate", "joined_date"), "") || undefined,
+    imageUrl: (pick("imageUrl", "image_url", "avatarUrl", "photoUrl") as string | null | undefined) ?? null,
+    fee: pick("fee"),
   };
 }
 
@@ -161,7 +173,8 @@ export interface NormalizedLeaveType extends LeaveType {
   description?: string;
 }
 
-function normalizeLeaveType(raw: unknown): NormalizedLeaveType {
+/** Normalize backend leave-type shapes (snake/camel/_id variants). */
+export function normalizeLeaveType(raw: unknown): NormalizedLeaveType {
   const r = (raw ?? {}) as Record<string, unknown>;
   const str = (v: unknown, fb = ""): string =>
     typeof v === "string" ? v : v === undefined || v === null ? fb : String(v);
@@ -172,18 +185,42 @@ function normalizeLeaveType(raw: unknown): NormalizedLeaveType {
     }
     return undefined;
   };
-  const maxRaw = pick("maxDays", "max_days", "maxLeaveDays", "allowedDays");
+  // Backend row from your DB: { id, hostelId/hostel_id, name, maxDays/max_days,
+  // isActive/is_active/active }. Accept every variant so rows never vanish.
+  const maxRaw = pick("maxDays", "max_days", "maxLeaveDays", "allowedDays", "max_days_allowed");
   const maxDays =
     typeof maxRaw === "number"
       ? maxRaw
       : typeof maxRaw === "string" && maxRaw.trim() !== ""
         ? Number(maxRaw)
         : undefined;
+  const boolOf = (v: unknown): boolean | undefined => {
+    if (typeof v === "boolean") return v;
+    if (typeof v === "string") {
+      const s = v.trim().toLowerCase();
+      if (["true", "1", "yes", "on"].includes(s)) return true;
+      if (["false", "0", "no", "off", "inactive"].includes(s)) return false;
+      return undefined;
+    }
+    if (typeof v === "number") return v !== 0;
+    return undefined;
+  };
+  const activeRaw = pick("isActive", "is_active", "active", "isEnabled", "enabled");
+  const isActive = boolOf(activeRaw);
+  const requiresParentApproval = boolOf(
+    pick("requiresParentApproval", "requires_parent_approval", "parentApproval", "needsParentApproval")
+  );
+  const createdAt = pick("createdAt", "created_at") as string | undefined;
+  const updatedAt = pick("updatedAt", "updated_at") as string | undefined;
   return {
-    id: str(pick("id", "_id", "leaveTypeId"), ""),
-    name: str(pick("name", "title", "type"), "Leave"),
-    hostelId: (pick("hostelId", "hostel_id") as string | undefined) ?? undefined,
+    id: str(pick("id", "_id", "leaveTypeId", "leave_type_id"), ""),
+    name: str(pick("name", "title", "type", "leaveName", "leave_name"), "Leave"),
+    hostelId: (pick("hostelId", "hostel_id", "hostelID") as string | undefined) ?? undefined,
     maxDays: typeof maxDays === "number" && Number.isFinite(maxDays) ? maxDays : undefined,
+    isActive,
+    requiresParentApproval,
+    createdAt: typeof createdAt === "string" ? createdAt : undefined,
+    updatedAt: typeof updatedAt === "string" ? updatedAt : undefined,
     description: str(pick("description", "details", "desc"), "") || undefined,
   };
 }
@@ -239,7 +276,8 @@ export function useMyResidence(hostelId?: string | null) {
           (rr) =>
             (user?.id && rr.id === user.id) ||
             (user?.email && rr.email.toLowerCase() === user.email.toLowerCase())
-        ) ?? null;
+        ) ??
+        (rows.length === 1 ? rows[0] : null);
       setState({ data: mine, error: null, isLoading: false, forbidden: false });
       return mine;
     } catch (err) {
@@ -260,11 +298,18 @@ export function useMyFees() {
     error: null,
     isLoading: true,
   });
+  const [totalPendingDue, setTotalPendingDue] = useState<number | null>(null);
   const load = useCallback(async () => {
     setState((s) => ({ ...s, isLoading: s.data === null, error: null }));
     try {
       const res = await hostelGhar.resident.fees();
+      // Backend shape: { success, fees: [...], totalPendingDue }
+      // (NOT { data: [...] }) — pick up `fees` too via toPaginated.
       const items = toPaginated<Fee>(res.data).items;
+      const raw = (res.data ?? {}) as { totalPendingDue?: unknown };
+      const pending =
+        raw.totalPendingDue !== undefined ? Number(raw.totalPendingDue) : null;
+      setTotalPendingDue(Number.isFinite(pending as number) ? (pending as number) : null);
       setState({ data: items, error: null, isLoading: false });
       return items;
     } catch (err) {
@@ -276,7 +321,7 @@ export function useMyFees() {
   useEffect(() => {
     load();
   }, [load]);
-  return { ...state, refetch: load, retry: load };
+  return { ...state, totalPendingDue, refetch: load, retry: load };
 }
 
 export function useMyLeaves() {

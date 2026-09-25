@@ -4,7 +4,6 @@ import { Card, CardHeader } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { ErrorState, EmptyState } from "@/components/ui/EmptyState";
-import { formatCurrency, formatDate } from "@/lib/utils";
 import { useHostelFacilities } from "@/hooks/useResidentDashboard";
 import { useMyRoomSummary } from "@/hooks/useMyRoomSummary";
 
@@ -12,12 +11,9 @@ export default function ResidentFacilitiesPage() {
   const room = useMyRoomSummary();
   const fac = useHostelFacilities(room.hostelId);
   return (
-    <DashboardShell
-      title="Facilities"
-      subtitle={`GET /hostels/:hostelId/facilities · ${room.hostelName}`}
-    >
+    <DashboardShell title="Facilities" subtitle={room.hostelName}>
       <Card>
-        <CardHeader title="Hostel facilities" subtitle="Read-only · maintained by owner/admin" />
+        <CardHeader title="Hostel facilities" subtitle="Maintained by your hostel team" />
         {fac.isLoading ? (
           <div className="space-y-2 p-5">
             <Skeleton className="h-4 w-full" />
@@ -61,12 +57,6 @@ export default function ResidentFacilitiesPage() {
           </div>
         )}
       </Card>
-      <p className="mt-3 text-xs text-neutral-400">
-        Paid {formatCurrency(0)} placeholder removed — edit intentionally read-only for residents.
-      </p>
-      <p className="text-xs text-neutral-400">
-        Last checked {formatDate(new Date().toISOString())} · source: live API.
-      </p>
     </DashboardShell>
   );
 }

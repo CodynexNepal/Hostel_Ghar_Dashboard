@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { useToast } from "@/hooks/useToast";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
+import { PaymentQrSettings } from "@/components/payments/PaymentQrSettings";
 
 export default function SettingsPage() {
   const { success } = useToast();
@@ -82,6 +83,9 @@ export default function SettingsPage() {
               </Button>
             </div>
           </Card>
+        </div>
+        <div className="mt-4">
+          <PaymentQrSettings />
         </div>
       </Protected>
     </DashboardShell>

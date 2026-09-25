@@ -21,7 +21,7 @@ export default function ResidentProfilePage() {
     ["Bed", r?.bedNumber ?? "—"],
   ];
   return (
-    <DashboardShell title="Profile" subtitle="GET /auth/me + your resident row">
+    <DashboardShell title="Profile" subtitle={room.hostelName}>
       {room.isLoading ? (
         <Card className="p-5">
           <Skeleton className="h-5 w-40" />

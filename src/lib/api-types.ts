@@ -288,6 +288,8 @@ export interface Fee {
   billingYear?: number;
   dueDate?: string;
   month?: string;
+  /** Room of the resident — present on dashboard `recentPayments` rows. */
+  roomNumber?: string;
   status: FeeStatus;
   method?: string;
   paidAt?: string;
@@ -590,6 +592,51 @@ export type UpdatePaymentQrPayload = Partial<CreatePaymentQrPayload>;
 export type PatchPaymentQrPayload = Partial<CreatePaymentQrPayload>;
 
 /* ---------------- Owner dashboard / analytics ---------------- */
+
+/**
+ * One bucket of `OwnerDashboard.revenueTrend` (GET /owner/dashboard).
+ * Backend sends either a bare collected figure or collected + billed pair;
+ * `normalizeRevenueTrend` resolves both shapes (and month → label).
+ */
+export interface RevenueTrendPoint {
+  /** Display label, e.g. "Apr" / "Apr 2026" — always present. */
+  label: string;
+  billingMonth?: number;
+  billingYear?: number;
+  /** Money collected in the bucket. */
+  collected: number;
+  /** Money billed/expected in the bucket — drives the collection percentage. */
+  billed?: number;
+}
+
+/** One row of `OwnerDashboard.floorOverview` — rooms/beds per floor. */
+export interface FloorOverviewItem {
+  /** Floor index as sent by backend (number when possible). */
+  floor: number | string;
+  /** Display label ("Floor 2", or the backend's flat name when provided). */
+  label: string;
+  rooms: number;
+  occupiedBeds?: number;
+  totalBeds?: number;
+}
+
+/** One row of `OwnerDashboard.roomMix` — room count per room type. */
+export interface RoomMixItem {
+  type: string;
+  /** Display label ("Double", "Dorm") derived from `type`. */
+  label: string;
+  rooms: number;
+  occupiedBeds?: number;
+  totalBeds?: number;
+}
+
+/**
+ * Aggregate `hostelGhar.owner.dashboard()` response — the single payload that
+ * feeds the whole owner dashboard (stats + charts + recent payment rows), so
+ * the dashboard no longer needs a separate payments/ledger call.
+ * Every field is optional: normalizeOwnerDashboard fills what it can and the
+ * UI falls back to derived values (rooms list) for the rest.
+ */
 export interface OwnerDashboard {
   totalResidents?: number;
   occupiedBeds?: number;
@@ -600,8 +647,19 @@ export interface OwnerDashboard {
   pendingAmount?: number;
   totalRooms?: number;
   availableRooms?: number;
+  /** Latest rent collections — replaces the removed /payments page feed. */
   recentPayments?: Fee[];
+  /** Monthly collected/billed series for the revenue chart. */
+  revenueTrend?: RevenueTrendPoint[];
+  /** Rooms + beds grouped by floor. */
+  floorOverview?: FloorOverviewItem[];
+  /** Rooms grouped by room type. */
+  roomMix?: RoomMixItem[];
+  /** Collected ÷ billed for the period, 0–100 when backend sends it. */
+  collectionRate?: number;
   occupancyRate?: number;
+  /** Per-hostel rows sent when the owner owns more than one hostel. */
+  hostels?: OwnerDashboardHostel[];
 }
 
 export interface OwnerDashboardHostel {

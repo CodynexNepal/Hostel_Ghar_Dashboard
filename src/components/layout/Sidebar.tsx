@@ -1,4 +1,5 @@
 "use client";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { navigationForRole, homeRouteForRole } from "@/constants/navigation";
@@ -8,6 +9,34 @@ import { SidebarNavList } from "./SidebarNav";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { initials } from "@/lib/utils";
 import { cn } from "@/lib/utils";
+
+/**
+ * Hostel Ghar brand mark — official logo plus text fallback.
+ * The JPG logo has a light background, so it sits in a white rounded tile
+ * that reads cleanly on the dark sidebar.
+ */
+export function BrandMark({ collapsed = false }: { collapsed?: boolean }) {
+  return (
+    <span className="flex items-center gap-2.5 overflow-hidden">
+      <span className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white">
+        <Image
+          src="/images/logo/hostel_ghar_logo.jpg"
+          alt="Hostel Ghar"
+          width={36}
+          height={36}
+          className="h-9 w-9 object-contain"
+          priority
+        />
+      </span>
+      {!collapsed && (
+        <span className="sidebar-label whitespace-nowrap">
+          <span className="block text-[15px] font-bold leading-tight text-white">Hostel Ghar</span>
+         
+        </span>
+      )}
+    </span>
+  );
+}
 
 export function Sidebar() {
   const { user, isLoading } = useAuth();
@@ -55,19 +84,7 @@ export function Sidebar() {
           className="flex h-16 shrink-0 items-center gap-2.5 overflow-hidden px-4"
           aria-label="Hostel Ghar home"
         >
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand text-sm font-extrabold text-brand-ink">
-            HG
-          </span>
-          {!collapsed && (
-            <span className="sidebar-label whitespace-nowrap">
-              <span className="block text-[15px] font-bold leading-tight text-white">
-                Hostel Ghar
-              </span>
-              <span className="block text-[11px] font-medium leading-tight text-neutral-400">
-                SaaS Dashboard
-              </span>
-            </span>
-          )}
+          <BrandMark collapsed={collapsed} />
         </Link>
         <nav
           className="sidebar-nav min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain px-2.5 pb-4 pt-1"
@@ -97,19 +114,7 @@ export function Sidebar() {
         className="flex h-16 shrink-0 items-center gap-2.5 overflow-hidden px-4"
         aria-label="Hostel Ghar home"
       >
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand text-sm font-extrabold text-brand-ink">
-          HG
-        </span>
-        {!collapsed && (
-          <span className="sidebar-label whitespace-nowrap">
-            <span className="block text-[15px] font-bold leading-tight text-white">
-              Hostel Ghar
-            </span>
-            <span className="block text-[11px] font-medium leading-tight text-neutral-400">
-              SaaS Dashboard
-            </span>
-          </span>
-        )}
+        <BrandMark collapsed={collapsed} />
       </Link>
       <nav
         className="sidebar-nav min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain px-2.5 pb-4 pt-1"

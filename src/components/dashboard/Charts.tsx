@@ -1,7 +1,9 @@
 "use client";
 import { Card, CardHeader } from "@/components/ui/Card";
+import { formatCurrency } from "@/lib/utils";
+import type { RevenueTrendPoint } from "@/lib/api-types";
 
-const MONTHS = [
+const FALLBACK_MONTHS = [
   { m: "Apr", v: 62 },
   { m: "May", v: 74 },
   { m: "Jun", v: 68 },
@@ -10,37 +12,112 @@ const MONTHS = [
   { m: "Sep", v: 96 },
 ];
 
-export function RevenueChart() {
-  const max = Math.max(...MONTHS.map((x) => x.v));
+interface RevenueChartProps {
+  /** Live buckets from the owner-dashboard aggregate. */
+  points?: RevenueTrendPoint[];
+  /** Collection rate (0–100) shown as the delta badge when provided. */
+  collectionRate?: number;
+}
+
+export function RevenueChart({ points, collectionRate }: RevenueChartProps = {}) {
+  const live = (points ?? []).slice(-12);
+  const hasLive = live.length > 0;
+  const bars = hasLive
+    ? live.map((p) => ({
+        m: p.label,
+        v: p.collected,
+        billed: p.billed,
+        outstanding: p.outstanding,
+      }))
+    : FALLBACK_MONTHS.map((x) => ({
+        m: x.m,
+        v: x.v,
+        billed: undefined as number | undefined,
+        outstanding: undefined as number | undefined,
+      }));
+  const max = Math.max(1, ...bars.map((x) => Math.max(x.v, x.billed ?? 0)));
+  const best = hasLive ? bars.reduce((a, b) => (b.v > a.v ? b : a), bars[0]) : null;
+  const totalCollected = bars.reduce((s, x) => s + x.v, 0);
+  const totalBilled = bars.reduce((s, x) => s + (x.billed ?? x.v + (x.outstanding ?? 0)), 0);
+  const effectiveRate =
+    collectionRate !== undefined && Number.isFinite(collectionRate)
+      ? collectionRate
+      : totalBilled > 0
+        ? Math.round((totalCollected / totalBilled) * 1000) / 10
+        : undefined;
+  const delta =
+    effectiveRate !== undefined
+      ? `${effectiveRate >= 0 ? "+" : ""}${effectiveRate}%`
+      : hasLive
+        ? undefined
+        : "+12.5%";
+  const subtitle = hasLive
+    ? `${formatCurrency(totalCollected)} collected${totalBilled > totalCollected ? ` of ${formatCurrency(totalBilled)} billed` : ""} · ${bars.length} month${bars.length === 1 ? "" : "s"}${
+        best ? ` · ${best.m} best at ${formatCurrency(best.v)}` : ""
+      }`
+    : "Last 6 months · Sep at 96%";
   return (
     <Card>
       <CardHeader
         title="Revenue collection"
-        subtitle="Last 6 months · Sep at 96%"
+        subtitle={subtitle}
         action={
-          <span className="rounded-full bg-brand px-2.5 py-1 text-xs font-bold text-brand-ink">
-            +12.5%
-          </span>
+          delta ? (
+            <span className="rounded-full bg-brand px-2.5 py-1 text-xs font-bold text-brand-ink">
+              {delta}
+            </span>
+          ) : undefined
         }
       />
       <div className="px-5 pb-2 pt-4">
         <div
           className="flex h-44 min-w-0 items-end gap-2 sm:gap-3"
           role="img"
-          aria-label="Revenue bar chart, September highest at 96 percent"
+          aria-label={
+            hasLive
+              ? `Revenue bar chart, ${bars.length} months, ${best?.m} highest`
+              : "Revenue bar chart, September highest at 96 percent"
+          }
         >
-          {MONTHS.map((x) => (
-            <div key={x.m} className="flex min-w-0 flex-1 flex-col items-center gap-2">
-              <div className="flex min-h-0 w-full flex-1 items-end rounded-md bg-neutral-100">
-                <div
-                  className="w-full rounded-md bg-brand-ink transition-all duration-500"
-                  style={{ height: `${(x.v / max) * 100}%` }}
-                  title={`${x.m}: ${x.v}%`}
-                />
+          {bars.map((x) => {
+            const pct = Math.max(0, Math.min(100, (x.v / max) * 100));
+            const billedPct =
+              x.billed !== undefined && x.billed > 0
+                ? Math.max(0, Math.min(100, (x.billed / max) * 100))
+                : undefined;
+            return (
+              <div key={x.m} className="flex min-w-0 flex-1 flex-col items-center gap-2">
+                <div className="flex min-h-0 w-full flex-1 items-end rounded-md bg-neutral-100">
+                  <div
+                    className="relative w-full rounded-md bg-neutral-200"
+                    style={{ height: `${billedPct ?? pct}%` }}
+                    title={
+                      hasLive
+                        ? `${x.m}: ${formatCurrency(x.v)}${
+                            x.billed !== undefined
+                              ? ` of ${formatCurrency(x.billed)} billed`
+                              : x.outstanding !== undefined
+                                ? ` · ${formatCurrency(x.outstanding)} outstanding`
+                                : ""
+                          }`
+                        : `${x.m}: ${x.v}%`
+                    }
+                  >
+                    <div
+                      className="absolute inset-x-0 bottom-0 rounded-md bg-brand-ink transition-all duration-500"
+                      style={{
+                        height:
+                          billedPct && x.billed
+                            ? `${(x.v / Math.max(1, x.billed)) * 100}%`
+                            : "100%",
+                      }}
+                    />
+                  </div>
+                </div>
+                <span className="text-xs font-medium text-neutral-500">{x.m}</span>
               </div>
-              <span className="text-xs font-medium text-neutral-500">{x.m}</span>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </Card>

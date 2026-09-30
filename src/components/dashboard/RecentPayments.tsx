@@ -5,28 +5,76 @@ import Link from "next/link";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Badge, statusTone } from "@/components/ui/Badge";
 import { formatCurrency, formatDate } from "@/lib/utils";
-import { hostelGhar, toPaginated, unwrap } from "@/lib/hostelGhar";
+import { hostelGhar, normalizeDashboardPayment, toPaginated, unwrap } from "@/lib/hostelGhar";
 import type { Fee, OwnerDashboard } from "@/lib/api-types";
 
 interface Props {
+  /**
+   * Live rows from the owner-dashboard aggregate (`recentPayments`).
+   * When provided the card renders them directly and skips its own fetch —
+   * this is the post-/payments-removal path used by the dashboard page.
+   */
+  payments?: Fee[];
+  /** Legacy path: fetch the hostel ledger when no aggregate rows are given. */
   hostelId?: string;
 }
 
-export function RecentPayments({ hostelId }: Props = {}) {
-  const [fees, setFees] = useState<Fee[]>([]);
-  const [isLoading, setIsLoading] = useState(Boolean(hostelId));
+function monthYearLabel(p: Fee): string {
+  if (p.month && p.month.trim() !== "") return p.month;
+  const m = typeof p.billingMonth === "number" ? p.billingMonth : Number(p.billingMonth);
+  const y = typeof p.billingYear === "number" ? p.billingYear : Number(p.billingYear);
+  if (Number.isFinite(m) && m >= 1 && m <= 12) {
+    const short = [
+      "Jan",
+      "Feb",
+      "Mar",
+      "Apr",
+      "May",
+      "Jun",
+      "Jul",
+      "Aug",
+      "Sep",
+      "Oct",
+      "Nov",
+      "Dec",
+    ][m - 1];
+    return Number.isFinite(y) && y > 0 ? `${short} ${y}` : short;
+  }
+  return "";
+}
+
+function rowDate(p: Fee): string {
+  // Prefer an explicit due/paid timestamp; billing month/year otherwise.
+  const stamp = p.paidAt ?? p.dueDate;
+  if (stamp) return formatDate(stamp);
+  return monthYearLabel(p);
+}
+
+export function RecentPayments({ payments, hostelId }: Props = {}) {
+  const [fees, setFees] = useState<Fee[]>(payments ?? []);
+  const [isLoading, setIsLoading] = useState(payments === undefined && Boolean(hostelId));
+
+  // Aggregate rows win when the dashboard already fetched them.
+  useEffect(() => {
+    if (payments !== undefined) {
+      setFees(payments);
+      setIsLoading(false);
+    }
+  }, [payments]);
 
   useEffect(() => {
+    if (payments !== undefined) return;
     let cancelled = false;
     async function load() {
-      // Prefer owner dashboard's embedded recentPayments; else hostel ledger.
+      // No aggregate rows — fall back to the dashboard payload, then the ledger.
       try {
         if (!hostelId) {
           const dash = await hostelGhar.owner.dashboard();
           const d = unwrap<OwnerDashboard>(dash.data);
-          if (!cancelled) {
-            setFees((d?.recentPayments ?? []).slice(0, 5));
-          }
+          const rows = (Array.isArray(d?.recentPayments) ? d.recentPayments : []).map((row) =>
+            normalizeDashboardPayment(row)
+          );
+          if (!cancelled) setFees(rows.slice(0, 5));
           return;
         }
         const res = await hostelGhar.fees.hostelFees(hostelId, { limit: 5 });
@@ -37,11 +85,11 @@ export function RecentPayments({ hostelId }: Props = {}) {
         if (!cancelled) setIsLoading(false);
       }
     }
-    if (hostelId !== undefined || true) load();
+    load();
     return () => {
       cancelled = true;
     };
-  }, [hostelId]);
+  }, [hostelId, payments]);
 
   if (isLoading) {
     return (
@@ -60,8 +108,8 @@ export function RecentPayments({ hostelId }: Props = {}) {
         <CardHeader title="Recent payments" subtitle="Latest rent collections" />
         <p className="px-5 py-6 text-sm text-neutral-500">
           No payments yet. Record the first payment from{" "}
-          <Link href="/payments" className="font-semibold underline">
-            Finance → Payments
+          <Link href="/fees" className="font-semibold underline">
+            Finance → Fees
           </Link>
           .
         </p>
@@ -76,7 +124,7 @@ export function RecentPayments({ hostelId }: Props = {}) {
         subtitle="Latest rent collections"
         action={
           <Link
-            href="/payments"
+            href="/fees"
             className="inline-flex items-center gap-1 text-[13px] font-semibold text-neutral-800 hover:text-black"
           >
             View all <ArrowRight className="h-3.5 w-3.5" />
@@ -101,14 +149,23 @@ export function RecentPayments({ hostelId }: Props = {}) {
                 {p.residentName ?? "Resident"}
               </span>
               <span className="block text-xs text-neutral-500">
-                {p.month ?? ""} {p.dueDate ? `· ${formatDate(p.dueDate)}` : ""}{" "}
+                {monthYearLabel(p)}
+                {p.roomNumber ? ` · Room ${p.roomNumber}` : ""}
+                {rowDate(p) && rowDate(p) !== monthYearLabel(p) ? ` · ${rowDate(p)}` : ""}{" "}
                 {p.method ? `· ${p.method}` : ""}
               </span>
             </span>
             <span className="text-right">
               <span className="block text-sm font-bold text-neutral-900">
-                {formatCurrency(p.amount)}
+                {formatCurrency(Number(p.totalPayable ?? p.amount) || 0)}
               </span>
+              {typeof p.paidAmount === "number" &&
+                p.paidAmount > 0 &&
+                p.paidAmount < Number(p.totalPayable ?? p.amount) && (
+                  <span className="block text-xs text-neutral-500">
+                    paid {formatCurrency(p.paidAmount)}
+                  </span>
+                )}
               <Badge tone={statusTone(p.status)} className="mt-0.5">
                 {p.status}
               </Badge>

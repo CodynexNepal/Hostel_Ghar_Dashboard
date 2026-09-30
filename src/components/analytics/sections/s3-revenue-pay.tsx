@@ -8,12 +8,16 @@ import { paymentStatus, revenueSeries } from "@/lib/analytics-series";
 import { formatCurrency } from "@/lib/utils";
 export function RevenueSection({ base }: { base: AnalyticsBase }) {
   const [mode, setMode] = useState<TrendMode>("monthly");
-  const data = useMemo(() => revenueSeries(base, mode), [base, mode]);
+  // GET /analytics/owner/summary → base.liveTrend (real collected curve).
+  // Falls back to modeled data when the summary has no revenueTrend buckets.
+  const data = useMemo(() => revenueSeries(base, mode, "rev", base.liveTrend), [base, mode]);
   const tot = data.reduce((a, d) => a + d.total, 0);
   const prev = data.reduce((a, d) => a + d.prevTotal, 0);
-  const pct = Math.round(((tot - prev) / Math.max(1, prev)) * 100);
+  const hasPrev = prev > 0;
+  const pct = hasPrev ? Math.round(((tot - prev) / Math.max(1, prev)) * 100) : 0;
+  const live = (base.liveTrend?.length ?? 0) > 0 && (mode === "monthly" || mode === "yearly");
   return (
-    <ChartShell title="Revenue analytics" subtitle={`${formatCurrency(tot)} this period · ${pct >= 0 ? "+" : ""}${pct}% vs previous`}
+    <ChartShell title="Revenue analytics" subtitle={live ? `${formatCurrency(tot)} collected · live from owner summary` : `${formatCurrency(tot)} this period · ${pct >= 0 ? "+" : ""}${pct}% vs previous`}
       filters={<Segmented label="Revenue granularity" value={mode} onChange={setMode}
         options={[{ value: "daily", label: "Daily" }, { value: "weekly", label: "Weekly" }, { value: "monthly", label: "Monthly" }, { value: "yearly", label: "Yearly" }]} />}
       onExport={() => downloadCSV(`revenue-${mode}.csv`, toCSV(["label", "rent", "other", "pending", "total", "prev_total"],
@@ -32,18 +36,20 @@ export function RevenueSection({ base }: { base: AnalyticsBase }) {
           </div>
         ))}
       </div>
-      <Insight tone={pct >= 0 ? "good" : "bad"} title={pct >= 0 ? `Revenue up ${pct}% vs previous period.` : `Revenue down ${pct}% vs previous period.`}
-        body={pct >= 0 ? "Collections are outpacing last period — keep the reminder cadence." : "Collections dipped — chase the oldest pending invoices first."} />
+      <Insight tone={live ? "good" : pct >= 0 ? "good" : "bad"} title={live ? `Live collections across ${data.length} months.` : pct >= 0 ? `Revenue up ${pct}% vs previous period.` : `Revenue down ${pct}% vs previous period.`}
+        body={live ? "Straight from GET /analytics/owner/summary — switch granularity for modeled views." : pct >= 0 ? "Collections are outpacing last period — keep the reminder cadence." : "Collections dipped — chase the oldest pending invoices first."} />
     </ChartShell>
   );
 }
 export function PaymentSection({ base }: { base: AnalyticsBase }) {
-  const slices = useMemo(() => paymentStatus(base), [base]);
+  // GET /analytics/owner/summary → base.feeCounts (real paid/pending/partial/overdue).
+  const slices = useMemo(() => paymentStatus(base, base.feeCounts), [base]);
   const total = slices.reduce((a, s) => a + s.amount, 0);
   const colors = [PALETTE.ink, PALETTE.blue, PALETTE.amber, PALETTE.red];
-  const coll = Math.round((slices[0].amount / Math.max(1, total)) * 100);
+  const coll = base.collectionRate ?? Math.round((slices[0].amount / Math.max(1, total)) * 100);
+  const liveCounts = (slices[0]?.count ?? 0) + (slices[1]?.count ?? 0) + (slices[2]?.count ?? 0) + (slices[3]?.count ?? 0) > 0 && base.feeCounts !== undefined;
   return (
-    <ChartShell title="Payment status" subtitle={`${coll}% collected · ${formatCurrency(total)} billed`}
+    <ChartShell title="Payment status" subtitle={`${coll}% collected · ${formatCurrency(total)} billed${liveCounts ? " · live" : ""}`}
       onExport={() => downloadCSV("payment-status.csv", toCSV(["status", "amount", "residents"], slices.map((s) => [s.label, s.amount, s.count])))}
       footer={<p>Only 4 lifecycle states — paid, partial, pending, overdue — so a donut stays readable.</p>}>
       <Donut centerTop={`${coll}%`} centerBottom="collected"

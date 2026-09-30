@@ -1,4 +1,5 @@
 "use client";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChevronDown, Lock, X } from "lucide-react";
@@ -51,8 +52,14 @@ export function MobileSidebar() {
       >
         <div className="flex h-16 items-center justify-between px-4">
           <span className="flex items-center gap-2.5">
-            <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand text-sm font-extrabold text-brand-ink">
-              HG
+            <span className="relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-lg bg-white">
+              <Image
+                src="/images/logo/hostel_ghar_logo.jpg"
+                alt="Hostel Ghar"
+                width={36}
+                height={36}
+                className="h-9 w-9 object-contain"
+              />
             </span>
             <span className="text-[15px] font-bold text-white">Hostel Ghar</span>
           </span>

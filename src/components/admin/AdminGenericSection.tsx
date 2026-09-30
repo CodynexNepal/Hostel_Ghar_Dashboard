@@ -8,7 +8,7 @@ const LINKS: [string, string, string][] = [
   ["Owners", "/admin/owners", "148 owners · KYC verified"],
   ["Residents", "/admin/hostels", "4,280 residents platform-wide"],
   ["Subscriptions", "/subscription", "112 paid · 36 free"],
-  ["Payments", "/payments", "Rs. 4.8L MRR"],
+  ["Payments", "/admin/payments", "Rs. 4.8L MRR"],
   ["Analytics", "/analytics", "Growth, churn, collection"],
   ["Settings", "/settings", "Platform configuration"],
 ];

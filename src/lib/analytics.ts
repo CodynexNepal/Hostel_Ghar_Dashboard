@@ -48,6 +48,27 @@ export interface AnalyticsBase {
   totalHostels: number; totalResidents: number; totalRooms: number;
   totalBeds: number; occupiedBeds: number; monthlyRevenue: number;
   pendingAmount: number; monthlyExpenses: number;
+  /** True when every figure came from the live backend (no demo fallback). */
+  isLive?: boolean;
+  /**
+   * Live monthly buckets from GET /analytics/owner/summary (`revenueTrend`).
+   * When present, `revenueSeries()` renders the real collected curve instead
+   * of modeled data.
+   */
+  liveTrend?: { label: string; collected: number; billed?: number }[];
+  /**
+   * Live fee lifecycle counts from GET /analytics/owner/summary (`feeCounts`).
+   * When present, `paymentStatus()` splits the donut by real counts.
+   */
+  feeCounts?: { paid?: number; pending?: number; partial?: number; overdue?: number };
+  /** Live occupancy % (0-100) when the summary endpoint sends it. */
+  occupancyRate?: number;
+  /** Live collection % (0-100) when the summary endpoint sends it. */
+  collectionRate?: number;
+  /** Live pending invoice count when the summary endpoint sends it. */
+  pendingCount?: number;
+  /** Live vacant room count when the summary endpoint sends it. */
+  availableRooms?: number;
 }
 export function defaultBase(): AnalyticsBase {
   return { totalHostels: 3, totalResidents: 138, totalRooms: 42, totalBeds: 168, occupiedBeds: 132, monthlyRevenue: 1485000, pendingAmount: 214500, monthlyExpenses: 862000 };

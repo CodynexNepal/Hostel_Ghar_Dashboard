@@ -60,9 +60,8 @@ export const OWNER_NAVIGATION: NavItem[] = [
     icon: Wallet,
     permission: "MANAGE_PAYMENTS",
     children: [
-      { label: "Payments", href: "/payments", permission: "MANAGE_PAYMENTS" },
-      { label: "Payment QRs", href: "/settings#payment-qrs", permission: "MANAGE_SETTINGS" },
       { label: "Fees", href: "/fees", permission: "MANAGE_PAYMENTS" },
+      { label: "Payment QRs", href: "/settings#payment-qrs", permission: "MANAGE_SETTINGS" },
       { label: "Expenses", href: "/expenses", permission: "MANAGE_EXPENSES" },
       { label: "Invoices", href: "/invoices", permission: "MANAGE_INVOICES" },
     ],

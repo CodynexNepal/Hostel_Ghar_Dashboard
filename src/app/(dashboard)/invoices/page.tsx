@@ -1,4 +1,5 @@
 "use client";
+import { useState } from "react";
 import { DashboardShell } from "@/components/layout/DashboardShell";
 import { Protected } from "@/components/common/Protected";
 import { DataTable, type Column } from "@/components/ui/DataTable";
@@ -6,6 +7,7 @@ import { Badge, statusTone } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { formatCurrency } from "@/lib/utils";
 import { useToast } from "@/hooks/useToast";
+import { CreateInvoiceModal, type NewInvoicePayload } from "@/components/finance/CreateInvoiceModal";
 
 interface InvoiceRow {
   id: string;
@@ -23,6 +25,13 @@ const INVOICES: InvoiceRow[] = [
 
 export default function InvoicesPage() {
   const { success } = useToast();
+  const [createOpen, setCreateOpen] = useState(false);
+
+  function createInvoice(payload: NewInvoicePayload) {
+    console.info("[Hostel Ghar] New invoice", payload);
+    setCreateOpen(false);
+    success("Invoice ready", "The invoice form data was logged to the console.");
+  }
   const columns: Column<InvoiceRow>[] = [
     {
       key: "id",
@@ -56,11 +65,9 @@ export default function InvoicesPage() {
   ];
   return (
     <DashboardShell title="Invoices" subtitle="Hostel Ghar / Finance / Invoices">
-      <Protected permission="MANAGE_INVOICES" redirectTo="/payments">
+      <Protected permission="MANAGE_INVOICES" redirectTo="/fees">
         <div className="mb-4 flex justify-end">
-          <Button onClick={() => success("Invoice created", "Draft saved for September.")}>
-            New Invoice
-          </Button>
+          <Button onClick={() => setCreateOpen(true)}>New Invoice</Button>
         </div>
         <DataTable<InvoiceRow>
           columns={columns}
@@ -79,6 +86,11 @@ export default function InvoicesPage() {
               <Badge tone={statusTone(r.status)}>{r.status}</Badge>
             </div>
           )}
+        />
+        <CreateInvoiceModal
+          open={createOpen}
+          onClose={() => setCreateOpen(false)}
+          onSubmit={createInvoice}
         />
       </Protected>
     </DashboardShell>

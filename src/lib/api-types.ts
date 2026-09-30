@@ -257,12 +257,7 @@ export interface NormalizedLeaveType extends LeaveType {
 export type FeeStatus = "PAID" | "PENDING" | "OVERDUE" | "PARTIAL";
 
 export type FeeType =
-  | "MONTHLY_HOSTEL_FEE"
-  | "ADMISSION_FEE"
-  | "SECURITY_DEPOSIT"
-  | "LATE_FEE"
-  | "MISC"
-  | string;
+  "MONTHLY_HOSTEL_FEE" | "ADMISSION_FEE" | "SECURITY_DEPOSIT" | "LATE_FEE" | "MISC" | string;
 
 export interface Fee {
   id: string;
@@ -312,10 +307,7 @@ export interface CreateFeePayload {
 
 /** Domain socket events broadcast by the backend (owner/admin rooms). */
 export type DomainSocketEvent =
-  | "hostel:updated"
-  | "booking:confirmed"
-  | "leave:status_changed"
-  | "payment:processed";
+  "hostel:updated" | "booking:confirmed" | "leave:status_changed" | "payment:processed";
 
 export interface RecordPaymentPayload {
   amount: number;
@@ -327,6 +319,64 @@ export interface RecordPaymentPayload {
 /** Result of PATCH /fees/:id/payment. */
 export interface RecordPaymentResult extends Partial<Fee> {
   message?: string;
+}
+
+/* ---------------- Expenses ---------------- */
+
+export type ExpenseCategory =
+  | "FOOD"
+  | "UTILITIES"
+  | "MAINTENANCE"
+  | "SALARIES"
+  | "SUPPLIES"
+  | "OTHER"
+  | string;
+
+export type ExpenseStatus = "PAID" | "PENDING";
+
+export interface Expense {
+  id: string;
+  hostelId?: string;
+  hostelName?: string;
+  title: string;
+  category: ExpenseCategory;
+  amount: number | string;
+  expenseDate: string;
+  /** Aliases accepted from backend variants. */
+  date?: string;
+  notes?: string | null;
+  status: ExpenseStatus;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface CreateExpensePayload {
+  hostelId: string;
+  title: string;
+  category: ExpenseCategory;
+  amount: number;
+  expenseDate: string;
+  notes?: string;
+  status: ExpenseStatus;
+}
+
+export type UpdateExpensePayload = Partial<
+  Pick<CreateExpensePayload, "title" | "category" | "amount" | "expenseDate" | "notes" | "status">
+>;
+
+export interface ExpenseListParams extends ListParams {
+  hostelId?: string;
+  category?: string;
+  status?: string;
+}
+
+export interface ExpensePagination {
+  totalItems: number;
+  currentPage: number;
+  totalPages: number;
+  itemsPerPage: number;
+  hasNextPage: boolean;
+  hasPrevPage: boolean;
 }
 
 /* ---------------- Facilities (hostel-scoped, normalized) ---------------- */
@@ -607,6 +657,11 @@ export interface RevenueTrendPoint {
   collected: number;
   /** Money billed/expected in the bucket — drives the collection percentage. */
   billed?: number;
+  /**
+   * Money still outstanding in the bucket (backend sends this instead of
+   * `billed`). Total billed = collected + outstanding.
+   */
+  outstanding?: number;
 }
 
 /** One row of `OwnerDashboard.floorOverview` — rooms/beds per floor. */
@@ -658,6 +713,10 @@ export interface OwnerDashboard {
   /** Collected ÷ billed for the period, 0–100 when backend sends it. */
   collectionRate?: number;
   occupancyRate?: number;
+  occupiedRooms?: number;
+  residentsOnLeaveToday?: number;
+  totalHostels?: number;
+  pendingCount?: number;
   /** Per-hostel rows sent when the owner owns more than one hostel. */
   hostels?: OwnerDashboardHostel[];
 }
@@ -675,15 +734,44 @@ export interface AdminSummary {
   totalResidents?: number;
   mrr?: number;
   monthlyRevenue?: number;
+  totalRevenue?: number;
+  pendingAmount?: number;
+  totalFees?: number;
+  paidFees?: number;
+  pendingFees?: number;
+  overdueFees?: number;
+  collectionRate?: number;
+  occupancyRate?: number;
+  totalBeds?: number;
+  occupiedBeds?: number;
+  totalRooms?: number;
   activePlans?: number | string;
   hostels?: Hostel[];
+  revenueTrend?: RevenueTrendPoint[];
+  [key: string]: unknown;
 }
 
+/**
+ * GET /analytics/owner/summary — owner-scoped totals + fee aggregates.
+ * All variant key shapes are tolerated by `normalizeOwnerSummary`.
+ */
 export interface OwnerSummary {
   hostel?: HostelDetail;
   residents?: number;
+  totalResidents?: number;
   occupancy?: number;
+  occupancyRate?: number;
   revenue?: number;
+  monthlyRevenue?: number;
+  totalRevenue?: number;
   pendingDues?: number;
+  pendingAmount?: number;
+  pendingCount?: number;
+  collectionRate?: number;
+  totalBeds?: number;
+  occupiedBeds?: number;
+  totalRooms?: number;
+  availableRooms?: number;
+  revenueTrend?: RevenueTrendPoint[];
   [key: string]: unknown;
 }

@@ -31,7 +31,7 @@ const ACTIONS: {
   {
     label: "Record Payment",
     desc: "Log rent collection",
-    href: "/payments",
+    href: "/fees",
     icon: Wallet,
     permission: "MANAGE_PAYMENTS",
   },

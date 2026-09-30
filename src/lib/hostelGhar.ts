@@ -30,6 +30,11 @@ import type {
   RecordPaymentPayload,
   Booking,
   Fee,
+  Expense,
+  CreateExpensePayload,
+  UpdateExpensePayload,
+  ExpenseListParams,
+  ExpensePagination,
   LeaveRequest,
   LeaveType,
   HostelDetail,
@@ -37,6 +42,10 @@ import type {
   ResidentImport,
   ResidentImportPlanLimits,
   OwnerDashboard,
+  OwnerDashboardHostel,
+  RevenueTrendPoint,
+  FloorOverviewItem,
+  RoomMixItem,
   AdminSummary,
   OwnerSummary,
   Owner,
@@ -165,8 +174,7 @@ export function paymentQrBasePath(): string {
   return `${PREFIX}/payment-qrs`;
 }
 
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * Return the id only when it is a real backend UUID.
@@ -185,16 +193,16 @@ export function validHostelId(id?: string | null): string | undefined {
   return v;
 }
 
-/** Strip an invalid/non-UUID `hostelId` from list query params. */
-function cleanHostelParams<T extends { hostelId?: string } | undefined>(
+/** Strip an invalid/non-UUID `hostelId` from list query params (keeps other filters). */
+function cleanHostelParams<T extends Record<string, unknown> | undefined>(
   params?: T
-): { hostelId?: string } | undefined {
+): Record<string, unknown> | undefined {
   if (!params || typeof params !== "object") return undefined;
   const hid = validHostelId((params as { hostelId?: string }).hostelId);
   if (hid) return { ...(params as object), hostelId: hid };
   const { hostelId: _omit, ...rest } = params as Record<string, unknown>;
   void _omit;
-  return rest as { hostelId?: string } | undefined;
+  return Object.keys(rest).length > 0 ? rest : undefined;
 }
 
 /**
@@ -202,7 +210,9 @@ function cleanHostelParams<T extends { hostelId?: string } | undefined>(
  * Backend `paymentMethod` only accepts: ESEWA | KHALTI | BANK_TRANSFER.
  */
 export function toBackendPaymentMethod(raw: unknown): string {
-  const v = String(raw ?? "").toUpperCase().trim();
+  const v = String(raw ?? "")
+    .toUpperCase()
+    .trim();
   if (v.includes("BANK")) return "BANK_TRANSFER";
   if (v.includes("KHALTI")) return "KHALTI";
   if (v.includes("ESEWA")) return "ESEWA";
@@ -220,13 +230,24 @@ export function splitAccountLabel(
   const text = String(label ?? "").trim();
   if (!text) return { accountName: fallbackName, accountIdentifier: "" };
   // Prefer explicit "A/C[: ]xxxx" / "ID[: ]xxxx" suffix as the identifier.
-  const idMatch = text.match(/(?:A\/C|ID|ID No|Acc(?:ount)?(?: No| Number)?)\s*[:#-]?\s*([A-Za-z0-9+_./@ -]{3,})\s*$/i);
+  const idMatch = text.match(
+    /(?:A\/C|ID|ID No|Acc(?:ount)?(?: No| Number)?)\s*[:#-]?\s*([A-Za-z0-9+_./@ -]{3,})\s*$/i
+  );
   if (idMatch?.[1]) {
-    const identifier = idMatch[1].trim().replace(/[•·|]+.*$/, "").trim();
-    const name = text.slice(0, idMatch.index).replace(/[•·|:,\-–—\s]+$/, "").trim();
+    const identifier = idMatch[1]
+      .trim()
+      .replace(/[•·|]+.*$/, "")
+      .trim();
+    const name = text
+      .slice(0, idMatch.index)
+      .replace(/[•·|:,\-–—\s]+$/, "")
+      .trim();
     return { accountName: name || fallbackName, accountIdentifier: identifier };
   }
-  const parts = text.split(/[•·|]/).map((p) => p.trim()).filter(Boolean);
+  const parts = text
+    .split(/[•·|]/)
+    .map((p) => p.trim())
+    .filter(Boolean);
   if (parts.length >= 2) {
     const identifier = parts[parts.length - 1].replace(/^(A\/C|ID)\s*[:#-]?\s*/i, "").trim();
     const name = parts.slice(0, -1).join(" • ").trim();
@@ -278,9 +299,7 @@ export function toPaymentQrForm(
   // hostelId must be a real UUID — "default"/junk is dropped so the backend
   // resolves the hostel from auth / X-Hostel-Id instead of 500ing on uuid parse.
   {
-    const hid = validHostelId(
-      (p as Record<string, unknown>).hostelId as string | null | undefined
-    );
+    const hid = validHostelId((p as Record<string, unknown>).hostelId as string | null | undefined);
     if (hid) body.hostelId = hid;
   }
   for (const k of ["isActive", "status"] as const) {
@@ -311,14 +330,18 @@ export function normalizePaymentQr(raw: unknown): PaymentQr {
     }
     return undefined;
   };
-  const paymentMethod = str(pick("paymentMethod", "payment_method", "method", "tag", "provider") || "") || undefined;
+  const paymentMethod =
+    str(pick("paymentMethod", "payment_method", "method", "tag", "provider") || "") || undefined;
   const accountName = str(pick("accountName", "account_name") || "") || undefined;
-  const accountIdentifier = str(pick("accountIdentifier", "account_identifier", "accountNumber") || "") || undefined;
+  const accountIdentifier =
+    str(pick("accountIdentifier", "account_identifier", "accountNumber") || "") || undefined;
   // Rebuild a display label for the UI from canonical parts (fall back to legacy label).
   const legacyLabel = str(pick("label", "accountLabel") || "");
   const label =
     legacyLabel ||
-    [accountName, accountIdentifier].filter(Boolean).join(accountName && accountIdentifier ? " • " : "") ||
+    [accountName, accountIdentifier]
+      .filter(Boolean)
+      .join(accountName && accountIdentifier ? " • " : "") ||
     undefined;
   return {
     ...(r as PaymentQr),
@@ -328,9 +351,11 @@ export function normalizePaymentQr(raw: unknown): PaymentQr {
     accountIdentifier,
     method: paymentMethod as PaymentQr["method"],
     label,
-    qrCodeUrl: str(
-      pick("qrCodeUrl", "qrCodeURL", "qr_code_url", "imageUrl", "qrUrl", "image", "qr", "url") || ""
-    ) || undefined,
+    qrCodeUrl:
+      str(
+        pick("qrCodeUrl", "qrCodeURL", "qr_code_url", "imageUrl", "qrUrl", "image", "qr", "url") ||
+          ""
+      ) || undefined,
   };
 }
 
@@ -473,6 +498,750 @@ export function normalizeResident(raw: unknown): Resident {
     ),
     monthlyRent: num(pick("monthlyRent", "monthly_rent", "rent", "feeAmount"), 0),
     avatarUrl: (pick("avatarUrl", "avatar", "photoUrl") as string | undefined) ?? undefined,
+  };
+}
+
+/** Live fee-count slice carried on summaries (plain optional field). */
+export interface OwnerSummaryFeeCounts {
+  paid: number;
+  pending: number;
+  partial: number;
+  overdue: number;
+}
+
+export interface OwnerSummaryWithCounts extends OwnerSummary {
+  feeCounts?: OwnerSummaryFeeCounts;
+}
+
+export interface AdminSummaryWithCounts extends AdminSummary {
+  feeCounts?: OwnerSummaryFeeCounts;
+}
+
+/* ---------------- Owner dashboard aggregate ---------------- */
+
+const DASHBOARD_MONTH_LABELS = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+] as const;
+
+function dashboardMonthLabel(month?: number, year?: number): string | undefined {
+  if (!month || month < 1 || month > 12) return undefined;
+  const short = DASHBOARD_MONTH_LABELS[month - 1];
+  return year && year > 0 ? `${short} ${year}` : short;
+}
+
+/** Best-effort month/year from labels like "2026-04" / "Apr 2026". */
+function parseTrendLabel(label: string): { month?: number; year?: number } {
+  const iso = label.match(/(\d{4})-(\d{1,2})(?:-\d{1,2})?/);
+  if (iso) return { year: Number(iso[1]), month: Number(iso[2]) };
+  const named = label.match(/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+(\d{4})$/i);
+  if (named) {
+    const month = DASHBOARD_MONTH_LABELS.findIndex(
+      (m) => m.toLowerCase() === named[1].slice(0, 3).toLowerCase()
+    );
+    if (month >= 0) return { month: month + 1, year: Number(named[2]) };
+  }
+  return {};
+}
+
+/**
+ * Normalize one dashboard `recentPayments` row into the UI `Fee` shape.
+ * Tolerates nested `resident`/`user` objects and snake_case fee variants.
+ */
+export function normalizeDashboardPayment(raw: unknown): Fee {
+  const r = (raw ?? {}) as Record<string, unknown>;
+  const nested = [r.resident, r.user, r.fee].filter(
+    (v): v is Record<string, unknown> => typeof v === "object" && v !== null
+  );
+  const pick = (...keys: string[]): unknown => {
+    for (const scope of [r, ...nested]) {
+      for (const k of keys) {
+        const v = scope[k];
+        if (v !== undefined && v !== null && v !== "") return v;
+      }
+    }
+    return undefined;
+  };
+  const num = (v: unknown, fallback = 0): number => {
+    const n = typeof v === "string" ? Number(v) : (v as number);
+    return Number.isFinite(n) ? n : fallback;
+  };
+  const str = (v: unknown): string =>
+    typeof v === "string" ? v : v === undefined || v === null ? "" : String(v);
+  const billingMonth =
+    num(pick("billingMonth", "billing_month", "month", "monthNumber"), 0) || undefined;
+  const billingYear = num(pick("billingYear", "billing_year", "year"), 0) || undefined;
+  const month =
+    str(pick("month", "label", "period", "billingPeriod")) ||
+    dashboardMonthLabel(billingMonth, billingYear) ||
+    undefined;
+  const totalPayable = num(
+    pick(
+      "totalPayable",
+      "total_payable",
+      "total",
+      "totalAmount",
+      "payableAmount",
+      "amount",
+      "dueAmount",
+      "due_amount"
+    ),
+    0
+  );
+  const paidAmount = num(
+    pick("paidAmount", "paid_amount", "paid", "collectedAmount", "amountPaid"),
+    0
+  );
+  const statusRaw = String(
+    pick("status", "feeStatus", "paymentStatus", "payment_status") ?? ""
+  ).toUpperCase();
+  const status: Fee["status"] = (["PAID", "PENDING", "OVERDUE", "PARTIAL"] as const).includes(
+    statusRaw as Fee["status"]
+  )
+    ? (statusRaw as Fee["status"])
+    : totalPayable > 0 && paidAmount >= totalPayable
+      ? "PAID"
+      : paidAmount > 0
+        ? "PARTIAL"
+        : "PENDING";
+  const firstName = str(pick("firstName", "first_name"));
+  const lastName = str(pick("lastName", "last_name"));
+  const composed = `${firstName} ${lastName}`.trim();
+  return {
+    id: str(pick("id", "_id", "feeId", "fee_id", "paymentId", "payment_id")) || `fee-${Date.now()}`,
+    residentId: str(pick("residentId", "resident_id")) || undefined,
+    residentName:
+      str(pick("residentName", "resident_name", "fullName", "full_name", "name")) ||
+      composed ||
+      "Resident",
+    hostelId: str(pick("hostelId", "hostel_id")) || undefined,
+    amount: totalPayable,
+    totalPayable,
+    paidAmount,
+    dueAmount: num(pick("dueAmount", "due_amount"), Math.max(0, totalPayable - paidAmount)),
+    billingMonth,
+    billingYear,
+    dueDate: str(pick("dueDate", "due_date")) || undefined,
+    month,
+    roomNumber: str(pick("roomNumber", "room_number", "roomNo", "room")) || undefined,
+    status,
+    method: str(pick("method", "paymentMethod", "payment_method")) || undefined,
+    paidAt:
+      str(
+        pick(
+          "paidAt",
+          "paid_at",
+          "paymentDate",
+          "updatedAt",
+          "updated_at",
+          "createdAt",
+          "created_at"
+        )
+      ) || undefined,
+  };
+}
+
+/**
+ * Normalize `revenueTrend` — accepts an array of buckets OR a month-keyed map
+ * (`{ "2026-04": 62000 }` / `{ "Apr": { collected, billed } }`).
+ */
+export function normalizeRevenueTrend(payload: unknown): RevenueTrendPoint[] {
+  const list: unknown[] = Array.isArray(payload)
+    ? payload
+    : payload !== null && typeof payload === "object"
+      ? Object.entries(payload as Record<string, unknown>).map(([label, value]) =>
+          value !== null && typeof value === "object" && !Array.isArray(value)
+            ? { ...(value as Record<string, unknown>), label }
+            : { label, collected: value }
+        )
+      : [];
+  // The backend may emit newest-first; order oldest → newest by (year, month).
+  const asRecord = (item: unknown): Record<string, unknown> =>
+    (item ?? {}) as Record<string, unknown>;
+  const monthKey = (item: unknown): number => {
+    const r = asRecord(item);
+    const toNum = (v: unknown): number =>
+      typeof v === "number" ? v : typeof v === "string" && v !== "" ? Number(v) : NaN;
+    const year = toNum(r.billingYear ?? r.billing_year ?? r.year);
+    const month = toNum(r.billingMonth ?? r.billing_month ?? r.month);
+    return (Number.isFinite(year) ? year : 0) * 12 + (Number.isFinite(month) ? month : 0);
+  };
+  const ordered = [...list]
+    .map((item, index) => ({ item, index }))
+    .sort((a, b) => monthKey(a.item) - monthKey(b.item) || a.index - b.index)
+    .map(({ item }) => item);
+  return ordered.map((item) => {
+    const r = (item ?? {}) as Record<string, unknown>;
+    const pick = (...keys: string[]): unknown => {
+      for (const k of keys) {
+        const v = r[k];
+        if (v !== undefined && v !== null && v !== "") return v;
+      }
+      return undefined;
+    };
+    const num = (v: unknown, fallback = 0): number => {
+      const n = typeof v === "string" ? Number(v) : (v as number);
+      return Number.isFinite(n) ? n : fallback;
+    };
+    const str = (v: unknown): string =>
+      typeof v === "string" ? v : v === undefined || v === null ? "" : String(v);
+    const rawLabel = str(pick("label", "monthLabel", "period", "name", "key", "date"));
+    const parsed = rawLabel ? parseTrendLabel(rawLabel) : {};
+    const month = num(pick("billingMonth", "billing_month", "month", "monthNumber"), 0);
+    const year = num(pick("billingYear", "billing_year", "year"), 0);
+    const billingMonth = month >= 1 && month <= 12 ? month : parsed.month;
+    const billingYear = year > 0 ? year : parsed.year;
+    const billedRaw = pick(
+      "billed",
+      "billedAmount",
+      "expected",
+      "expectedAmount",
+      "totalBilled",
+      "due",
+      "dueAmount"
+    );
+    const collected = num(
+      pick(
+        "collected",
+        "collectedAmount",
+        "total",
+        "totalAmount",
+        "revenue",
+        "amount",
+        "value",
+        "paid",
+        "paidAmount"
+      ),
+      0
+    );
+    const outstandingRaw = pick("outstanding", "outstandingAmount", "remaining", "balance");
+    const outstanding = outstandingRaw === undefined ? undefined : num(outstandingRaw, 0);
+    // Backend sends either billed or outstanding; billed wins, else derive it.
+    const billed =
+      billedRaw === undefined
+        ? outstanding === undefined
+          ? undefined
+          : collected + outstanding
+        : num(billedRaw, 0);
+    return {
+      label: rawLabel || dashboardMonthLabel(billingMonth, billingYear) || "—",
+      billingMonth,
+      billingYear,
+      collected,
+      billed,
+      outstanding,
+    };
+  });
+}
+
+/** Normalize `floorOverview` rows (array or keyed map of floor → counts). */
+export function normalizeFloorOverview(payload: unknown): FloorOverviewItem[] {
+  const list: unknown[] = Array.isArray(payload)
+    ? payload
+    : payload !== null && typeof payload === "object"
+      ? Object.entries(payload as Record<string, unknown>).map(([floor, value]) =>
+          value !== null && typeof value === "object" && !Array.isArray(value)
+            ? { ...(value as Record<string, unknown>), floor }
+            : { floor, rooms: value }
+        )
+      : [];
+  return list.map((item) => {
+    const r = (item ?? {}) as Record<string, unknown>;
+    const pick = (...keys: string[]): unknown => {
+      for (const k of keys) {
+        const v = r[k];
+        if (v !== undefined && v !== null && v !== "") return v;
+      }
+      return undefined;
+    };
+    const num = (v: unknown, fallback = 0): number => {
+      const n = typeof v === "string" ? Number(v) : (v as number);
+      return Number.isFinite(n) ? n : fallback;
+    };
+    const str = (v: unknown): string =>
+      typeof v === "string" ? v : v === undefined || v === null ? "" : String(v);
+    const floorRaw = pick(
+      "floor",
+      "floorNumber",
+      "floor_number",
+      "level",
+      "flat",
+      "name",
+      "label",
+      "key"
+    );
+    const floorNum = typeof floorRaw === "number" ? floorRaw : Number(floorRaw);
+    const floor: number | string = Number.isFinite(floorNum) ? floorNum : str(floorRaw) || "—";
+    const occupiedRaw = pick("occupiedBeds", "occupied_beds", "occupied");
+    const totalBedsRaw = pick("totalBeds", "total_beds", "beds");
+    return {
+      floor,
+      label:
+        str(pick("label", "flatName", "displayName")) ||
+        (typeof floor === "number" ? `Floor ${floor}` : String(floor)),
+      rooms: num(
+        pick("rooms", "roomCount", "room_count", "count", "total", "totalRooms", "value"),
+        0
+      ),
+      occupiedBeds: occupiedRaw === undefined ? undefined : num(occupiedRaw, 0),
+      totalBeds: totalBedsRaw === undefined ? undefined : num(totalBedsRaw, 0),
+    };
+  });
+}
+
+/** Normalize `roomMix` rows (array or type-keyed map). */
+export function normalizeRoomMix(payload: unknown): RoomMixItem[] {
+  const list: unknown[] = Array.isArray(payload)
+    ? payload
+    : payload !== null && typeof payload === "object"
+      ? Object.entries(payload as Record<string, unknown>).map(([type, value]) =>
+          value !== null && typeof value === "object" && !Array.isArray(value)
+            ? { ...(value as Record<string, unknown>), type }
+            : { type, rooms: value }
+        )
+      : [];
+  return list.map((item) => {
+    const r = (item ?? {}) as Record<string, unknown>;
+    const pick = (...keys: string[]): unknown => {
+      for (const k of keys) {
+        const v = r[k];
+        if (v !== undefined && v !== null && v !== "") return v;
+      }
+      return undefined;
+    };
+    const num = (v: unknown, fallback = 0): number => {
+      const n = typeof v === "string" ? Number(v) : (v as number);
+      return Number.isFinite(n) ? n : fallback;
+    };
+    const str = (v: unknown): string =>
+      typeof v === "string" ? v : v === undefined || v === null ? "" : String(v);
+    const type = (
+      str(pick("type", "roomType", "room_type", "key", "name", "label")) || "UNKNOWN"
+    ).toUpperCase();
+    const occupiedRaw = pick("occupiedBeds", "occupied_beds", "occupied");
+    const totalBedsRaw = pick("totalBeds", "total_beds", "beds");
+    return {
+      type,
+      label: str(pick("label", "displayName")) || type.charAt(0) + type.slice(1).toLowerCase(),
+      rooms: num(
+        pick("rooms", "roomCount", "room_count", "count", "total", "totalRooms", "value"),
+        0
+      ),
+      occupiedBeds: occupiedRaw === undefined ? undefined : num(occupiedRaw, 0),
+      totalBeds: totalBedsRaw === undefined ? undefined : num(totalBedsRaw, 0),
+    };
+  });
+}
+
+/**
+ * Normalize the aggregate GET /owner/dashboard payload into `OwnerDashboard`.
+ * The axios layer's `unwrap()` returns only the `data` array, so this also
+ * accepts the raw axios `res.data` envelope and merges the sibling keys
+ * (`summary`, `floorOverview`, …) into one flat dashboard object.
+ * Tolerates camelCase/snake_case variants and values nested under
+ * `stats`/`summary`/`overview`/`metrics`. Missing keys stay `undefined` so the
+ * dashboard can fall back to derived values (e.g. the rooms list).
+ */
+export function normalizeOwnerDashboard(raw: unknown): OwnerDashboard {
+  const envelope = (
+    raw !== null && typeof raw === "object" && "data" in (raw as Record<string, unknown>)
+      ? (raw as Record<string, unknown>)
+      : null
+  ) as Record<string, unknown> | null;
+  const dataPart = envelope ? envelope.data : raw;
+  const root = ((Array.isArray(dataPart) ? {} : (dataPart as Record<string, unknown>)) ??
+    {}) as Record<string, unknown>;
+  // Sibling keys beside `data` (your payload: summary/floorOverview/…) plus the
+  // legacy { stats, metrics, overview } nesting variants. Merge them deeply so
+  // keys nested one level down (e.g. summary.totalResidents) resolve.
+  const siblings = envelope ? (({ data: _ignored, ...rest }) => rest)(envelope) : {};
+  const deepMerge = (
+    base: Record<string, unknown>,
+    extra: Record<string, unknown>
+  ): Record<string, unknown> => {
+    const out: Record<string, unknown> = { ...base };
+    for (const [key, value] of Object.entries(extra)) {
+      const current = out[key];
+      if (
+        current !== null &&
+        typeof current === "object" &&
+        !Array.isArray(current) &&
+        value !== null &&
+        typeof value === "object" &&
+        !Array.isArray(value)
+      ) {
+        out[key] = deepMerge(current as Record<string, unknown>, value as Record<string, unknown>);
+      } else if (out[key] === undefined || out[key] === null || out[key] === "") {
+        out[key] = value;
+      }
+    }
+    return out;
+  };
+  let merged: Record<string, unknown> = { ...root };
+  for (const extra of [siblings, root.summary, root.stats, root.overview, root.metrics]) {
+    if (extra !== null && typeof extra === "object" && !Array.isArray(extra)) {
+      merged = deepMerge(merged, extra as Record<string, unknown>);
+    }
+  }
+  // The backend nests metrics one level down (`summary: { totalResidents… }`).
+  // deepMerge keeps that nesting (merged.summary.totalResidents), so build the
+  // lookup scopes explicitly: top level + known container objects.
+  const isPlainObject = (v: unknown): v is Record<string, unknown> =>
+    v !== null && typeof v === "object" && !Array.isArray(v);
+  const scopes: Record<string, unknown>[] = [merged];
+  for (const key of ["summary", "stats", "overview", "metrics"]) {
+    const v = merged[key];
+    if (isPlainObject(v) && !scopes.includes(v)) scopes.push(v);
+  }
+  const pick = (...keys: string[]): unknown => {
+    for (const scope of scopes) {
+      for (const k of keys) {
+        const v = scope[k];
+        if (v !== undefined && v !== null && v !== "") return v;
+      }
+    }
+    return undefined;
+  };
+  const num = (v: unknown, fallback = 0): number => {
+    const n = typeof v === "string" ? Number(v) : (v as number);
+    return Number.isFinite(n) ? n : fallback;
+  };
+  const optNum = (...keys: string[]): number | undefined => {
+    const v = pick(...keys);
+    return v === undefined ? undefined : num(v, 0);
+  };
+  const optRaw = (...keys: string[]): unknown => pick(...keys);
+  const pending = optNum(
+    "pendingAmount",
+    "pending_amount",
+    "pendingPayments",
+    "pending_payments",
+    "totalPendingAmount",
+    "dues",
+    "outstanding",
+    "totalDues"
+  );
+  const totalBeds = optNum("totalBeds", "total_beds", "beds", "totalBedCount");
+  const occupiedBeds = optNum("occupiedBeds", "occupied_beds", "occupied", "totalOccupiedBeds");
+  const availableBeds = optNum("availableBeds", "available_beds", "vacantBeds");
+  const hostelsRaw = pick("hostels", "hostelList", "data") as OwnerDashboardHostel[] | undefined;
+  // Current endpoint shape: `{ data: [hostel], summary: { ... } }`.
+  // `data` is intentionally excluded from the metric merge above, so retain
+  // it explicitly for the hostel name, type, and resident breakdown.
+  const hostels = Array.isArray(dataPart)
+    ? (dataPart as OwnerDashboardHostel[])
+    : Array.isArray(hostelsRaw)
+      ? hostelsRaw
+      : undefined;
+  // Derive collected/billed totals from the trend when present.
+  const trend = normalizeRevenueTrend(
+    optRaw("revenueTrend", "revenue_trend", "revenueSeries", "revenueByMonth")
+  );
+  const trendCollected = trend.reduce((s, p) => s + (p.collected || 0), 0);
+  const trendBilled = trend.reduce(
+    (s, p) => s + (p.billed ?? p.collected + (p.outstanding ?? 0)),
+    0
+  );
+  const collectionRate =
+    optNum("collectionRate", "collection_rate", "collectionPercentage") ??
+    (trendBilled > 0 ? Math.round((trendCollected / trendBilled) * 1000) / 10 : undefined);
+  return {
+    totalResidents: optNum(
+      "totalResidents",
+      "totalActiveResidents",
+      "total_residents",
+      "activeResidents",
+      "residents",
+      "residentCount"
+    ),
+    occupiedBeds,
+    totalBeds,
+    availableBeds:
+      availableBeds ??
+      (totalBeds !== undefined && occupiedBeds !== undefined
+        ? Math.max(0, totalBeds - occupiedBeds)
+        : undefined),
+    monthlyRevenue: optNum(
+      "monthlyRevenue",
+      "monthly_revenue",
+      "revenue",
+      "collectedThisMonth",
+      "totalRevenue",
+      "mrr"
+    ),
+    pendingPayments: pending,
+    pendingAmount: pending,
+    totalRooms: optNum("totalRooms", "total_rooms", "rooms", "roomCount"),
+    availableRooms: optNum("availableRooms", "available_rooms", "vacantRooms"),
+    recentPayments: (
+      optRaw("recentPayments", "recent_payments", "recentTransactions", "payments", "fees") as
+        unknown[] | undefined
+    )?.map(normalizeDashboardPayment),
+    revenueTrend: trend,
+    floorOverview: normalizeFloorOverview(
+      optRaw("floorOverview", "floor_overview", "floors", "floorBreakdown", "roomsByFloor")
+    ),
+    roomMix: normalizeRoomMix(
+      optRaw("roomMix", "room_mix", "roomTypes", "roomTypeBreakdown", "roomsByType")
+    ),
+    collectionRate,
+    occupancyRate: optNum("occupancyRate", "occupancy_rate", "occupancy"),
+    occupiedRooms: optNum("occupiedRooms", "occupied_rooms", "occupiedRoomCount"),
+    residentsOnLeaveToday: optNum("residentsOnLeaveToday", "residents_on_leave_today"),
+    totalHostels: optNum("totalHostels", "total_hostels", "hostelCount"),
+    pendingCount: optNum("pendingCount", "pending_count", "pendingBills"),
+    hostels,
+  };
+}
+
+/** Shared scope-picking for the analytics summary normalizers. */
+function analyticsScopes(raw: unknown): Record<string, unknown>[] {
+  const root = (unwrap<Record<string, unknown>>(raw) ?? {}) as Record<string, unknown>;
+  const scopes = [root];
+  for (const key of ["data", "summary", "stats", "overview", "result"]) {
+    const v = root[key];
+    if (v !== null && typeof v === "object" && !Array.isArray(v)) {
+      scopes.push(v as Record<string, unknown>);
+    }
+  }
+  return scopes;
+}
+
+function analyticsNum(v: unknown, fallback = 0): number {
+  const n = typeof v === "string" ? Number(v) : (v as number);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function analyticsFeeCounts(
+  pick: (...keys: string[]) => unknown
+): OwnerSummaryFeeCounts | undefined {
+  const num = (v: unknown): number | undefined =>
+    v === undefined ? undefined : analyticsNum(v, 0);
+  const paid = num(pick("paidFees", "paid_fees", "paidCount"));
+  const pending = num(pick("pendingFees", "pending_fees", "pendingCount"));
+  const partial = num(pick("partialFees", "partial_fees", "partialCount"));
+  const overdue = num(pick("overdueFees", "overdue_fees", "overdueCount"));
+  if (paid === undefined && pending === undefined && partial === undefined && overdue === undefined) {
+    return undefined;
+  }
+  return { paid: paid ?? 0, pending: pending ?? 0, partial: partial ?? 0, overdue: overdue ?? 0 };
+}
+
+/**
+ * Normalize GET /analytics/owner/summary into `OwnerSummary`.
+ * Accepts the envelope or the raw object; tolerates camel/snake variants and
+ * one level of nesting (`data` / `summary` / `stats`).
+ */
+export function normalizeOwnerSummary(raw: unknown): OwnerSummaryWithCounts {
+  const scopes = analyticsScopes(raw);
+  const pick = (...keys: string[]): unknown => {
+    for (const scope of scopes) {
+      for (const k of keys) {
+        const v = scope[k];
+        if (v !== undefined && v !== null && v !== "") return v;
+      }
+    }
+    return undefined;
+  };
+  const optNum = (...keys: string[]): number | undefined => {
+    const v = pick(...keys);
+    return v === undefined ? undefined : analyticsNum(v, 0);
+  };
+  const pending =
+    optNum(
+      "pendingAmount",
+      "pending_amount",
+      "pendingDues",
+      "pending_dues",
+      "pendingPayments",
+      "dues",
+      "outstanding",
+      "totalDues"
+    ) ?? 0;
+  return {
+    residents: optNum("residents", "totalResidents", "total_residents", "residentCount"),
+    totalResidents: optNum("totalResidents", "total_residents", "residents", "residentCount"),
+    occupancy: optNum("occupancy", "occupancyRate", "occupancy_rate"),
+    occupancyRate: optNum("occupancyRate", "occupancy_rate", "occupancy"),
+    revenue: optNum("revenue", "monthlyRevenue", "monthly_revenue", "totalRevenue"),
+    monthlyRevenue: optNum("monthlyRevenue", "monthly_revenue", "revenue", "totalRevenue"),
+    totalRevenue: optNum("totalRevenue", "total_revenue", "revenue", "monthlyRevenue"),
+    pendingDues: pending,
+    pendingAmount: pending,
+    pendingCount: optNum("pendingCount", "pending_count", "pendingFees", "pendingBills"),
+    collectionRate: optNum("collectionRate", "collection_rate", "collectionPercentage"),
+    totalBeds: optNum("totalBeds", "total_beds", "beds"),
+    occupiedBeds: optNum("occupiedBeds", "occupied_beds", "occupied"),
+    totalRooms: optNum("totalRooms", "total_rooms", "rooms", "roomCount"),
+    availableRooms: optNum("availableRooms", "available_rooms", "vacantRooms"),
+    revenueTrend: normalizeRevenueTrend(
+      pick("revenueTrend", "revenue_trend", "revenueSeries", "revenueByMonth")
+    ),
+    feeCounts: analyticsFeeCounts(pick),
+  };
+}
+
+/**
+ * Normalize GET /analytics/admin/summary into `AdminSummary`.
+ * Same tolerant shape handling as the owner variant; counts + fee totals.
+ */
+export function normalizeAdminSummary(raw: unknown): AdminSummaryWithCounts {
+  const scopes = analyticsScopes(raw);
+  const pick = (...keys: string[]): unknown => {
+    for (const scope of scopes) {
+      for (const k of keys) {
+        const v = scope[k];
+        if (v !== undefined && v !== null && v !== "") return v;
+      }
+    }
+    return undefined;
+  };
+  const optNum = (...keys: string[]): number | undefined => {
+    const v = pick(...keys);
+    return v === undefined ? undefined : analyticsNum(v, 0);
+  };
+  return {
+    totalHostels: optNum("totalHostels", "total_hostels", "hostelCount"),
+    totalResidents: optNum("totalResidents", "total_residents", "residents", "residentCount"),
+    mrr: optNum("mrr", "monthlyRevenue", "monthly_revenue", "revenue"),
+    monthlyRevenue: optNum("monthlyRevenue", "monthly_revenue", "mrr", "revenue"),
+    totalRevenue: optNum("totalRevenue", "total_revenue", "revenue"),
+    pendingAmount: optNum(
+      "pendingAmount",
+      "pending_amount",
+      "pendingDues",
+      "dues",
+      "outstanding",
+      "totalDues"
+    ),
+    totalFees: optNum("totalFees", "total_fees", "feeCount"),
+    paidFees: optNum("paidFees", "paid_fees", "paidCount"),
+    pendingFees: optNum("pendingFees", "pending_fees", "pendingCount"),
+    overdueFees: optNum("overdueFees", "overdue_fees", "overdueCount"),
+    collectionRate: optNum("collectionRate", "collection_rate", "collectionPercentage"),
+    occupancyRate: optNum("occupancyRate", "occupancy_rate", "occupancy"),
+    totalBeds: optNum("totalBeds", "total_beds", "beds"),
+    occupiedBeds: optNum("occupiedBeds", "occupied_beds", "occupied"),
+    totalRooms: optNum("totalRooms", "total_rooms", "rooms"),
+    revenueTrend: normalizeRevenueTrend(
+      pick("revenueTrend", "revenue_trend", "revenueSeries", "revenueByMonth")
+    ),
+    feeCounts: analyticsFeeCounts(pick),
+  };
+}
+
+/**
+ * Normalize a backend expense row into the UI `Expense` shape.
+ * Tolerates snake_case / camelCase / `date` aliases.
+ */
+export function normalizeExpense(raw: unknown): Expense {
+  const r = (raw ?? {}) as Record<string, unknown>;
+  const pick = (...keys: string[]): unknown => {
+    for (const k of keys) {
+      const v = r[k];
+      if (v !== undefined && v !== null && v !== "") return v;
+    }
+    return undefined;
+  };
+  const str = (v: unknown): string => (typeof v === "string" ? v : String(v ?? ""));
+  const statusRaw = String(pick("status") ?? "PENDING").toUpperCase();
+  const hostel = pick("hostel") as Record<string, unknown> | undefined;
+  return {
+    id: str(pick("id", "_id", "expenseId", `exp-${Date.now()}`)),
+    hostelId:
+      (pick("hostelId", "hostel_id") as string | undefined) ??
+      (typeof hostel?.id === "string" ? hostel.id : undefined),
+    hostelName:
+      (pick("hostelName", "hostel_name") as string | undefined) ??
+      (typeof hostel?.name === "string" ? hostel.name : undefined),
+    title: str(pick("title", "name")),
+    category: String(pick("category") ?? "OTHER").toUpperCase(),
+    amount: pick("amount") as number | string,
+    expenseDate: str(pick("expenseDate", "expense_date", "date")),
+    date: str(pick("date") ?? ""),
+    notes: (pick("notes", "description", "remarks") as string | null | undefined) ?? null,
+    status: (["PAID", "PENDING"] as const).includes(statusRaw as Expense["status"])
+      ? (statusRaw as Expense["status"])
+      : "PENDING",
+    createdAt: pick("createdAt", "created_at") as string | undefined,
+    updatedAt: pick("updatedAt", "updated_at") as string | undefined,
+  };
+}
+
+/** Normalize GET /expenses list (tolerates `{ data }` / raw array). */
+export function normalizeExpenseList(payload: unknown): Expense[] {
+  const { items } = toPaginated<unknown>(payload);
+  return items.map(normalizeExpense);
+}
+
+/**
+ * Normalize GET /expenses list pagination.
+ * Spec: `{ pagination: { totalItems, currentPage, totalPages, itemsPerPage, hasNextPage, hasPrevPage } }`.
+ * Falls back to the `meta` envelope or item count when uncached.
+ */
+export function normalizeExpensePagination(
+  payload: unknown,
+  fallbackLimit: number
+): ExpensePagination {
+  const root = (payload ?? {}) as Record<string, unknown>;
+  const scopes: Record<string, unknown>[] = [root];
+  const data = root.data;
+  if (data !== null && typeof data === "object" && !Array.isArray(data)) {
+    scopes.push(data as Record<string, unknown>);
+  }
+  const pickPag = (...keys: string[]): unknown => {
+    for (const scope of scopes) {
+      const holders = [scope.pagination, scope.meta, scope];
+      for (const holder of holders) {
+        if (holder !== null && typeof holder === "object" && !Array.isArray(holder)) {
+          for (const k of keys) {
+            const v = (holder as Record<string, unknown>)[k];
+            if (v !== undefined && v !== null && v !== "") return v;
+          }
+        }
+      }
+    }
+    return undefined;
+  };
+  const numOf = (v: unknown, fallback: number): number => {
+    const n = typeof v === "string" ? Number(v) : (v as number);
+    return Number.isFinite(n) ? n : fallback;
+  };
+  const meta = unwrapMeta(payload);
+  const totalItems = numOf(pickPag("totalItems", "total_items", "total"), meta?.total ?? 0);
+  const currentPage = Math.max(
+    1,
+    numOf(pickPag("currentPage", "current_page", "page"), meta?.page ?? 1)
+  );
+  const itemsPerPage = Math.max(
+    1,
+    numOf(pickPag("itemsPerPage", "items_per_page", "limit", "perPage"), meta?.limit ?? fallbackLimit)
+  );
+  const totalPages = Math.max(
+    1,
+    numOf(pickPag("totalPages", "total_pages"), meta?.totalPages ?? 1)
+  );
+  return {
+    totalItems,
+    currentPage,
+    totalPages,
+    itemsPerPage,
+    hasNextPage: Boolean(
+      pickPag("hasNextPage", "has_next_page") ?? meta?.hasNextPage ?? currentPage < totalPages
+    ),
+    hasPrevPage: Boolean(
+      pickPag("hasPrevPage", "has_prev_page") ?? meta?.hasPrevPage ?? currentPage > 1
+    ),
   };
 }
 
@@ -720,8 +1489,7 @@ export const hostelGhar = {
       roomNumber?: string;
       page?: number;
       limit?: number;
-    }) =>
-      getWithRetry<Bed[] | ApiEnvelope<Bed[]>>(`${PREFIX}/beds`, params),
+    }) => getWithRetry<Bed[] | ApiEnvelope<Bed[]>>(`${PREFIX}/beds`, params),
     create: (payload: CreateBedPayload) =>
       api.post<Bed | ApiEnvelope<Bed>>(`${PREFIX}/beds`, payload, {
         headers: idemHeaders(newIdempotencyKey()),
@@ -975,6 +1743,43 @@ export const hostelGhar = {
       getWithRetry<unknown>(`${PREFIX}/fees/hostels/${hostelId}/payment-proofs`, params),
   },
 
+  expenses: {
+    /**
+     * POST /expenses — owner/admin records a hostel cost.
+     * Body: { hostelId, title, category, amount, expenseDate, notes?, status }.
+     */
+    create: (payload: CreateExpensePayload) =>
+      api.post<Expense | ApiEnvelope<Expense>>(`${PREFIX}/expenses`, payload, {
+        headers: idemHeaders(newIdempotencyKey()),
+      }),
+    /**
+     * GET /expenses?page=&limit=&hostelId=&category=&status= — paginated list.
+     * Owners without `hostelId` get only their own hostels; admins get everything.
+     * `page`/`limit` are normalized server-side (max 100).
+     */
+    list: (params?: ExpenseListParams) =>
+      getWithRetry<Expense[] | ApiEnvelope<Expense[]>>(
+        `${PREFIX}/expenses`,
+        cleanHostelParams(params) as unknown as ListParams
+      ),
+    /** GET /expenses/:id — single expense (404 when missing/forbidden hostel). */
+    get: (id: string) => getWithRetry<Expense | ApiEnvelope<Expense>>(`${PREFIX}/expenses/${id}`),
+    /**
+     * PUT /expenses/:id — full update of title/category/amount/expenseDate/notes/status.
+     * `hostelId` is immutable — create a new row to move hostels.
+     */
+    update: (id: string, payload: UpdateExpensePayload) =>
+      api.put<Expense | ApiEnvelope<Expense>>(`${PREFIX}/expenses/${id}`, payload),
+    /**
+     * PATCH /expenses/:id — partial update of title/category/amount/expenseDate/notes/status.
+     * `hostelId` is immutable — create a new row to move hostels.
+     */
+    patch: (id: string, payload: UpdateExpensePayload) =>
+      api.patch<Expense | ApiEnvelope<Expense>>(`${PREFIX}/expenses/${id}`, payload),
+    /** DELETE /expenses/:id — removes an expense. */
+    remove: (id: string) => api.delete<{ message?: string }>(`${PREFIX}/expenses/${id}`),
+  },
+
   paymentQrs: {
     /**
      * Backend `paymentQrRouter` mount.
@@ -1003,20 +1808,16 @@ export const hostelGhar = {
       ),
     /** GET /:id — single QR by id (RESIDENT, OWNER, ADMIN). */
     detail: (id: string) =>
-      getWithRetry<PaymentQr | ApiEnvelope<PaymentQr>>(
-        `${paymentQrBasePath()}/${id}`
-      ),
+      getWithRetry<PaymentQr | ApiEnvelope<PaymentQr>>(`${paymentQrBasePath()}/${id}`),
     /** POST /demo — "Load Demo QRs": seeds eSewa, Khalti, Bank (OWNER, ADMIN). */
     loadDemo: (payload?: LoadDemoQrPayload) => {
       const body = { ...(payload ?? {}) };
       const hid = validHostelId(body.hostelId);
       if (hid) body.hostelId = hid;
       else delete body.hostelId;
-      return api.post<PaymentQr[] | ApiEnvelope<PaymentQr[]>>(
-        `${paymentQrBasePath()}/demo`,
-        body,
-        { headers: idemHeaders(newIdempotencyKey()) }
-      );
+      return api.post<PaymentQr[] | ApiEnvelope<PaymentQr[]>>(`${paymentQrBasePath()}/demo`, body, {
+        headers: idemHeaders(newIdempotencyKey()),
+      });
     },
     /**
      * POST / — create QR (OWNER, ADMIN).
@@ -1031,9 +1832,7 @@ export const hostelGhar = {
         {
           headers: {
             ...idemHeaders(newIdempotencyKey()),
-            ...(payload.file instanceof File
-              ? { "Content-Type": "multipart/form-data" }
-              : {}),
+            ...(payload.file instanceof File ? { "Content-Type": "multipart/form-data" } : {}),
           },
         }
       ),
@@ -1047,9 +1846,7 @@ export const hostelGhar = {
         toPaymentQrForm(payload, opts),
         {
           headers:
-            payload.file instanceof File
-              ? { "Content-Type": "multipart/form-data" }
-              : undefined,
+            payload.file instanceof File ? { "Content-Type": "multipart/form-data" } : undefined,
         }
       ),
     /** PATCH /:id — partial update (OWNER, ADMIN). */
@@ -1059,22 +1856,14 @@ export const hostelGhar = {
         toPaymentQrForm(payload, opts),
         {
           headers:
-            payload.file instanceof File
-              ? { "Content-Type": "multipart/form-data" }
-              : undefined,
+            payload.file instanceof File ? { "Content-Type": "multipart/form-data" } : undefined,
         }
       ),
     /** PATCH /:id/toggle — toggle active/inactive (OWNER, ADMIN). */
     toggleStatus: (id: string) =>
-      api.patch<PaymentQr | ApiEnvelope<PaymentQr>>(
-        `${paymentQrBasePath()}/${id}/toggle`,
-        {}
-      ),
+      api.patch<PaymentQr | ApiEnvelope<PaymentQr>>(`${paymentQrBasePath()}/${id}/toggle`, {}),
     /** DELETE /:id — "Remove" QR (OWNER, ADMIN). */
-    remove: (id: string) =>
-      api.delete<unknown>(
-        `${paymentQrBasePath()}/${id}`
-      ),
+    remove: (id: string) => api.delete<unknown>(`${paymentQrBasePath()}/${id}`),
   },
 };
 

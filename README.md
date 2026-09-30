@@ -5,7 +5,7 @@ Premium, responsive hostel-management dashboard (Next.js + TypeScript + Tailwind
 ## Roles
 
 - **Super Admin** → `/admin/*` (hostels, owners, platform analytics)
-- **Hostel Owner** → `/dashboard`, `/hostel`, `/residents`, `/rooms`, `/payments`, `/reports`, … (plan-gated)
+- **Hostel Owner** → `/dashboard`, `/hostel`, `/residents`, `/rooms`, `/fees`, `/reports`, … (plan-gated)
 - **Resident** → `/resident/*` (room, payments, announcements)
 
 Use the **Demo switcher** at the top of dashboards to change role + plan live.

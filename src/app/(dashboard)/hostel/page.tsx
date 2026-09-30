@@ -6,7 +6,7 @@ import { Card, CardHeader } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { useAuth } from "@/hooks/useAuth";
 import { useApi } from "@/hooks/useApi";
-import { hostelGhar, toPaginated, unwrap } from "@/lib/hostelGhar";
+import { hostelGhar, normalizeOwnerDashboard, toPaginated, unwrap } from "@/lib/hostelGhar";
 import { TableSkeleton } from "@/components/ui/Skeleton";
 import { ErrorState, EmptyState } from "@/components/ui/EmptyState";
 import type { HostelDetail, OwnerDashboard } from "@/lib/api-types";
@@ -34,7 +34,9 @@ export default function HostelOverviewPage() {
     let dashboard: OwnerDashboard | null = null;
     try {
       const res = await hostelGhar.owner.dashboard();
-      dashboard = unwrap<OwnerDashboard>(res.data);
+      // The owner dashboard response keeps summary metrics beside `data`.
+      // Normalize the full envelope so the overview receives those values.
+      dashboard = normalizeOwnerDashboard(res.data);
     } catch {
       // The hostel profile can still render if the summary endpoint is unavailable.
     }

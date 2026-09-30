@@ -36,7 +36,28 @@ export function residentGrowth(range: RangeKey, seed = "growth"): GrowthPoint[] 
 }
 export interface RevenuePoint { label: string; rent: number; pending: number; other: number; total: number; prevTotal: number; }
 const ML = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-export function revenueSeries(base: AnalyticsBase, mode: TrendMode, seed = "rev"): RevenuePoint[] {
+/**
+ * Revenue series — prefers live `revenueTrend` buckets
+ * ({ label, collected, billed? }) when provided, else models from totals.
+ * Live buckets render the real collected curve; the "previous period" line is
+ * only drawn for modeled data (we don't invent history for live months).
+ */
+export function revenueSeries(
+  base: AnalyticsBase,
+  mode: TrendMode,
+  seed = "rev",
+  liveTrend?: { label: string; collected: number; billed?: number }[]
+): RevenuePoint[] {
+  if (liveTrend && liveTrend.length > 0 && (mode === "monthly" || mode === "yearly")) {
+    const buckets = liveTrend.slice(-12);
+    const per = (p: { billed?: number; collected: number }) =>
+      Math.max(0, Math.round((p.billed ?? p.collected) - p.collected));
+    return buckets.map((p) => {
+      const pending = per(p);
+      const rent = p.collected;
+      return { label: p.label, rent, pending, other: 0, total: rent, prevTotal: 0 };
+    });
+  }
   const count = mode === "daily" ? 30 : mode === "weekly" ? 12 : mode === "monthly" ? 12 : 5;
   const rnd = mulberry32(hashSeed(seed + mode));
   const monthly = Math.max(60000, base.monthlyRevenue || 900000);
@@ -53,7 +74,34 @@ export function revenueSeries(base: AnalyticsBase, mode: TrendMode, seed = "rev"
   });
 }
 export interface PaymentSlice { key: string; label: string; amount: number; count: number; }
-export function paymentStatus(base: AnalyticsBase): PaymentSlice[] {
+/**
+ * Payment-status split — prefers live fee counts
+ * ({ paid, pending, partial, overdue }) when the summary endpoints provide
+ * them, else splits the totals proportionally (modeled).
+ */
+export function paymentStatus(
+  base: AnalyticsBase,
+  liveCounts?: { paid?: number; pending?: number; partial?: number; overdue?: number }
+): PaymentSlice[] {
+  const residents = Math.max(1, base.totalResidents);
+  if (liveCounts) {
+    const paidC = Math.max(0, Math.round(liveCounts.paid ?? 0));
+    const partialC = Math.max(0, Math.round(liveCounts.partial ?? 0));
+    const pendingC = Math.max(0, Math.round(liveCounts.pending ?? 0));
+    const overdueC = Math.max(0, Math.round(liveCounts.overdue ?? 0));
+    const total = paidC + partialC + pendingC + overdueC;
+    if (total > 0) {
+      // Amounts follow the money totals proportionally to live fee counts.
+      const billed = Math.max(1, base.monthlyRevenue + base.pendingAmount);
+      const share = (c: number) => Math.round((billed * c) / total);
+      return [
+        { key: "paid", label: "Paid", amount: share(paidC), count: paidC },
+        { key: "partial", label: "Partially paid", amount: share(partialC), count: partialC },
+        { key: "pending", label: "Pending", amount: share(pendingC), count: pendingC },
+        { key: "overdue", label: "Overdue", amount: share(overdueC), count: overdueC },
+      ];
+    }
+  }
   const billed = Math.max(1, base.monthlyRevenue + base.pendingAmount);
   const paid = base.monthlyRevenue;
   const pending = Math.round(base.pendingAmount * 0.52);
@@ -61,9 +109,9 @@ export function paymentStatus(base: AnalyticsBase): PaymentSlice[] {
   const overdue = Math.max(0, billed - paid - pending - partial);
   const r = Math.max(1, base.totalResidents);
   return [
-    { key: "paid", label: "Paid", amount: paid, count: Math.round(r * 0.68) },
-    { key: "partial", label: "Partially paid", amount: partial, count: Math.round(r * 0.09) },
-    { key: "pending", label: "Pending", amount: pending, count: Math.round(r * 0.15) },
-    { key: "overdue", label: "Overdue", amount: overdue, count: Math.max(1, Math.round(r * 0.08)) },
+    { key: "paid", label: "Paid", amount: paid, count: Math.round(residents * 0.68) },
+    { key: "partial", label: "Partially paid", amount: partial, count: Math.round(residents * 0.09) },
+    { key: "pending", label: "Pending", amount: pending, count: Math.round(residents * 0.15) },
+    { key: "overdue", label: "Overdue", amount: overdue, count: Math.max(1, Math.round(residents * 0.08)) },
   ];
 }

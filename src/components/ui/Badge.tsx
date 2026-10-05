@@ -35,7 +35,8 @@ export function statusTone(status: string): string {
   const s = status.toUpperCase();
   if (["PAID", "COMPLETED", "ACTIVE", "AVAILABLE"].includes(s)) return "green";
   if (["PENDING"].includes(s)) return "amber";
-  if (["OVERDUE", "FAILED", "SUSPENDED"].includes(s)) return "red";
-  if (["FULL", "MAINTENANCE", "PARTIAL"].includes(s)) return "blue";
+  if (["OVERDUE", "FAILED", "SUSPENDED", "REJECTED", "CANCELLED"].includes(s)) return "red";
+  if (["FULL", "MAINTENANCE", "PARTIAL", "PARTIALLY_PAID", "PARTIALLY-PAID"].includes(s))
+    return "blue";
   return "gray";
 }

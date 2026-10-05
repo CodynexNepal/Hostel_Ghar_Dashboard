@@ -12,8 +12,8 @@ import { useUpgrade } from "@/hooks/useUpgrade";
 import { cn } from "@/lib/utils";
 
 export function MobileSidebar() {
-  const { user, isLoading } = useAuth();
-  const { canAccess } = usePermissions();
+  const { user, isLoading, subscriptionLoading } = useAuth();
+  const { canAccess, isPlanLoading } = usePermissions();
   const { mobileOpen, setMobileOpen } = useSidebar();
   const { openUpgrade } = useUpgrade();
   const pathname = usePathname();
@@ -22,7 +22,7 @@ export function MobileSidebar() {
     Residents: true,
     Finance: true,
   });
-  if (isLoading) return null;
+  if (isLoading || subscriptionLoading) return null;
   // Same fallback as desktop Sidebar: derive role from URL when no session
   // so /admin* never shows an empty drawer while guards redirect.
   const fallbackRole = (pathname ?? "/").startsWith("/admin")
@@ -75,7 +75,7 @@ export function MobileSidebar() {
           <ul className="space-y-1">
             {nav.map((item) => {
               const Icon = item.icon;
-              const allowed = canAccess(item.permission);
+              const allowed = isPlanLoading ? true : canAccess(item.permission);
               if (item.children?.length) {
                 const open = openGroups[item.label] ?? true;
                 return (
@@ -94,7 +94,7 @@ export function MobileSidebar() {
                     {open && (
                       <ul className="ml-5 mt-1 space-y-0.5 border-l border-white/10 pl-3">
                         {item.children.map((c) => {
-                          const ok = canAccess(c.permission);
+                          const ok = isPlanLoading ? true : canAccess(c.permission);
                           if (!ok)
                             return (
                               <li key={c.label}>

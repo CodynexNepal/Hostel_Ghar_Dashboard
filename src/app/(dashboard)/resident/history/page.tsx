@@ -61,7 +61,9 @@ export default function ResidentHistoryPage() {
                   <div className="flex items-center gap-2">
                     <Badge tone={statusTone(p.status)}>{p.status}</Badge>
                     {proof && (
-                      <Badge tone={proofStatusTone(proof.status)}>{proofStatusLabel(proof.status)}</Badge>
+                      <Badge tone={proofStatusTone(proof.status)}>
+                        {proofStatusLabel(proof.status)}
+                      </Badge>
                     )}
                   </div>
                 </li>

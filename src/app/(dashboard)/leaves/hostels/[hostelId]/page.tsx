@@ -103,13 +103,7 @@ export default function HostelLeaveRequestsPage() {
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(20);
 
-  const {
-    data,
-    error,
-    isLoading,
-    isRefetching,
-    refetch,
-  } = useApi(async () => {
+  const { data, error, isLoading, isRefetching, refetch } = useApi(async () => {
     const res = await hostelGhar.leaves.hostelRequests(hostelId, {
       page,
       limit,

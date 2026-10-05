@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
@@ -17,12 +18,19 @@ import { useMutation } from "@/hooks/useApi";
 import { getHostelId, toApiError } from "@/lib/axios";
 import {
   hostelGhar,
+  normalizeCheckLimit,
   normalizeResident,
   normalizeRoom,
   toPaginated,
   unwrap,
+  validHostelId,
 } from "@/lib/hostelGhar";
-import type { HostelDetail, OwnerFlatOption, OwnerHostelOption, OwnerRoomOption } from "@/lib/api-types";
+import type {
+  HostelDetail,
+  OwnerFlatOption,
+  OwnerHostelOption,
+  OwnerRoomOption,
+} from "@/lib/api-types";
 import type { Room } from "@/types/hostel";
 import type { Resident } from "@/types/resident";
 import { MOCK_RESIDENTS, MOCK_ROOMS } from "@/lib/mock-data";
@@ -96,6 +104,7 @@ export default function AddResidentPage() {
   const [formRooms, setFormRooms] = useState<OwnerRoomOption[] | null>(null);
   const [roomDetail, setRoomDetail] = useState<OwnerRoomOption | null>(null);
   const [dynamicError, setDynamicError] = useState<string | null>(null);
+  const [limitBlocked, setLimitBlocked] = useState<string | null>(null);
 
   // GET /owner/residents/form-options/hostels — owner-scoped hostel dropdown.
   useEffect(() => {
@@ -248,26 +257,23 @@ export default function AddResidentPage() {
     () => formRooms?.find((r) => r.roomNumber === selectedRoomNumber) ?? null,
     [formRooms, selectedRoomNumber]
   );
-  const selectedRoom = useMemo(
-    () => {
-      if (selectedRoomOption) {
-        return {
-          id: selectedRoomOption.id,
-          roomNumber: selectedRoomOption.roomNumber,
-          floor: selectedRoomOption.floor ?? selectedRoomOption.flat ?? 0,
-          type: (selectedRoomOption.type?.toUpperCase() ?? "DOUBLE") as Room["type"],
-          capacity: Number(selectedRoomOption.capacity ?? 1),
-          occupied: Number(selectedRoomOption.occupiedBeds ?? 0),
-          monthlyRent: Number(selectedRoomOption.monthlyRent ?? 0),
-          status: (selectedRoomOption.status?.toUpperCase() ?? "AVAILABLE") as Room["status"],
-          amenities: [],
-          imageUrl: null,
-        } satisfies Room;
-      }
-      return rooms.find((r) => r.roomNumber === selectedRoomNumber) ?? null;
-    },
-    [rooms, selectedRoomNumber, selectedRoomOption]
-  );
+  const selectedRoom = useMemo(() => {
+    if (selectedRoomOption) {
+      return {
+        id: selectedRoomOption.id,
+        roomNumber: selectedRoomOption.roomNumber,
+        floor: selectedRoomOption.floor ?? selectedRoomOption.flat ?? 0,
+        type: (selectedRoomOption.type?.toUpperCase() ?? "DOUBLE") as Room["type"],
+        capacity: Number(selectedRoomOption.capacity ?? 1),
+        occupied: Number(selectedRoomOption.occupiedBeds ?? 0),
+        monthlyRent: Number(selectedRoomOption.monthlyRent ?? 0),
+        status: (selectedRoomOption.status?.toUpperCase() ?? "AVAILABLE") as Room["status"],
+        amenities: [],
+        imageUrl: null,
+      } satisfies Room;
+    }
+    return rooms.find((r) => r.roomNumber === selectedRoomNumber) ?? null;
+  }, [rooms, selectedRoomNumber, selectedRoomOption]);
   const residentsInRoom = useMemo(
     () =>
       selectedRoom
@@ -300,6 +306,27 @@ export default function AddResidentPage() {
   }, [availableBeds, selectedBedNumber, selectedRoom, setValue]);
 
   async function onSubmit(data: ResidentFormValues) {
+    setLimitBlocked(null);
+    // GET /subscriptions/check-limit — block before POST when the plan is full.
+    const hid = validHostelId(data.hostelId ?? hostelId);
+    if (hid) {
+      try {
+        const chk = normalizeCheckLimit((await hostelGhar.subscriptions.checkLimit(hid, 1)).data);
+        if (chk.allowed === false) {
+          setLimitBlocked(
+            chk.hint ??
+              chk.message ??
+              `Resident limit reached (${chk.currentCount ?? "?"} / ${chk.limit ?? "?"} on ${
+                chk.planName ?? chk.currentPlan ?? "your plan"
+              }).`
+          );
+          toastError("Resident limit reached", "Upgrade your plan to add more residents.");
+          return;
+        }
+      } catch {
+        /* fail open — the backend enforces plan limits authoritatively */
+      }
+    }
     const result = await mutate({
       name: data.name,
       email: data.email,
@@ -335,6 +362,7 @@ export default function AddResidentPage() {
                   required
                   onChange={(e) => {
                     setHostelId(e.target.value || null);
+                    setLimitBlocked(null);
                     setValue("hostelId", e.target.value, { shouldValidate: true });
                     setFlat("");
                     setValue("roomNumber", "", { shouldValidate: true });
@@ -444,8 +472,8 @@ export default function AddResidentPage() {
                 {(!formRooms || formRooms.length === 0) &&
                   selectableRooms.map((r) => (
                     <option key={r.id} value={r.roomNumber}>
-                      Room {r.roomNumber} · {r.type.toLowerCase()} · {r.occupied}/{r.capacity} beds ·
-                      Rs. {r.monthlyRent}
+                      Room {r.roomNumber} · {r.type.toLowerCase()} · {r.occupied}/{r.capacity} beds
+                      · Rs. {r.monthlyRent}
                     </option>
                   ))}
               </select>
@@ -529,6 +557,17 @@ export default function AddResidentPage() {
               >
                 {apiError.message}
               </p>
+            )}
+            {limitBlocked && (
+              <div
+                role="alert"
+                className="flex items-start justify-between gap-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] text-amber-800 sm:col-span-2"
+              >
+                <span>{limitBlocked}</span>
+                <Link href="/subscription" className="shrink-0 font-semibold underline">
+                  Upgrade plan
+                </Link>
+              </div>
             )}
             <div className="flex flex-col gap-2 pt-2 sm:col-span-2 sm:flex-row sm:justify-end">
               <Button type="button" variant="outline" onClick={() => router.back()}>

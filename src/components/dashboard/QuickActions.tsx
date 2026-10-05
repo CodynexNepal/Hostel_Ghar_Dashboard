@@ -47,7 +47,7 @@ const ACTIONS: {
 ];
 
 export function QuickActions() {
-  const { canAccess } = usePermissions();
+  const { canAccess, isPlanLoading } = usePermissions();
   const { openUpgrade } = useUpgrade();
   return (
     <Card>
@@ -57,7 +57,8 @@ export function QuickActions() {
       />
       <div className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-3 xl:grid-cols-6">
         {ACTIONS.map((a) => {
-          const locked = !canAccess(a.permission);
+          // While live plan resolves, don't flash locks — treat as unlocked.
+          const locked = isPlanLoading ? false : !canAccess(a.permission);
           const inner = (
             <>
               <span

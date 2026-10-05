@@ -15,7 +15,11 @@ export default function LoginPage() {
   return (
     <main className="grid min-h-screen bg-surface-muted lg:grid-cols-[minmax(0,0.9fr)_minmax(480px,1.1fr)]">
       <section className="flex min-h-screen flex-col bg-white px-6 py-6 sm:px-10 sm:py-8 lg:px-14 xl:px-20">
-        <Link href="/" className="inline-flex w-fit items-center gap-3" aria-label="Hostel Ghar home">
+        <Link
+          href="/"
+          className="inline-flex w-fit items-center gap-3"
+          aria-label="Hostel Ghar home"
+        >
           <span className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-lg border border-surface-border bg-white">
             <Image
               src="/images/logo/hostel_ghar_logo.jpg"
@@ -46,14 +50,19 @@ export default function LoginPage() {
             <div className="mt-8 rounded-lg border border-surface-border p-5 shadow-card sm:p-6">
               <div>
                 <p className="text-lg font-bold text-neutral-950">Welcome back</p>
-                <p className="mt-1 text-sm text-neutral-500">Use your registered email to continue.</p>
+                <p className="mt-1 text-sm text-neutral-500">
+                  Use your registered email to continue.
+                </p>
               </div>
               <LoginForm />
             </div>
 
             <p className="mt-5 text-sm text-neutral-600">
               New to Hostel Ghar?{" "}
-              <Link href="/register" className="font-semibold text-neutral-950 underline underline-offset-4">
+              <Link
+                href="/register"
+                className="font-semibold text-neutral-950 underline underline-offset-4"
+              >
                 Create an account
               </Link>
             </p>

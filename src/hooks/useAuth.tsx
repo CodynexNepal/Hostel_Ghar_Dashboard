@@ -1,10 +1,32 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useRouter } from "next/navigation";
 import type { AuthUser, SubscriptionPlan, UserRole } from "@/types/auth";
-import { hostelGhar, unwrap } from "@/lib/hostelGhar";
-import { clearHostelId, clearToken, getToken, setToken, toApiError } from "@/lib/axios";
+import {
+  hostelGhar,
+  normalizeCheckLimit,
+  normalizeSubscriptionCurrent,
+  resolveOwnerHostelId,
+  unwrap,
+  validHostelId,
+} from "@/lib/hostelGhar";
+import {
+  clearHostelId,
+  clearToken,
+  getHostelId,
+  getToken,
+  setToken,
+  toApiError,
+} from "@/lib/axios";
 import type { ApiErrorShape } from "@/lib/axios";
 import { USER_KEY } from "@/lib/env";
 import { normalizeRole, roleFromToken, routeForRole } from "@/lib/jwt";
@@ -24,13 +46,18 @@ interface AuthContextValue {
   authError: ApiErrorShape | null;
   role: UserRole | null;
   plan: SubscriptionPlan;
+  /** True while the owner's live plan is being fetched — gates should wait, not lock. */
+  subscriptionLoading: boolean;
   isAuthenticated: boolean;
   login: (email: string, password: string) => Promise<LoginResult>;
   register: (p: Record<string, string>) => Promise<LoginResult>;
   logout: () => void;
   refresh: () => Promise<void>;
+  /** Re-fetch live plan for current owner (no-op for other roles). */
+  refreshSubscription: (explicitUser?: AuthUser | null) => Promise<void>;
   switchRole: (role: UserRole) => void;
   switchPlan: (plan: SubscriptionPlan) => void;
+  syncLiveSubscription: (planId: SubscriptionPlan, used: number, limit: number | null) => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -100,6 +127,103 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [authError, setAuthError] = useState<ApiErrorShape | null>(null);
+  const [subscriptionLoading, setSubscriptionLoading] = useState(false);
+  const userRef = useRef<AuthUser | null>(null);
+
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
+
+  /**
+   * Write the LIVE plan into auth state. Must run in ALL environments
+   * (incl. production) — previously this only happened on /subscription.
+   */
+  const syncLiveSubscription = useCallback(
+    (planId: SubscriptionPlan, used: number, limit: number | null) => {
+      setPlanOverride(planId);
+      setUser((prev) => {
+        if (!prev) return prev;
+        const next: AuthUser = {
+          ...prev,
+          subscription: {
+            ...prev.subscription,
+            plan: prev.role === "SUPER_ADMIN" ? "ENTERPRISE" : planId,
+            residentsUsed: used,
+            residentsLimit: limit ?? 500,
+          },
+        };
+        writeCachedUser(next);
+        return next;
+      });
+    },
+    []
+  );
+
+  /**
+   * Fetch the owner's REAL plan (GET current + check-limit) and sync it.
+   * Hostel resolves explicit UUID → cookie → first owned hostel.
+   */
+  const refreshSubscription = useCallback(
+    async (explicitUser?: AuthUser | null) => {
+      const snapshot = explicitUser ?? userRef.current;
+      if (!snapshot || snapshot.role !== "HOSTEL_OWNER") return;
+      let hid: string | null = null;
+      try {
+        hid = await resolveOwnerHostelId(snapshot.hostelId ?? getHostelId());
+      } catch {
+        hid = null;
+      }
+      const uuid = validHostelId(hid);
+      if (!uuid) return;
+      setSubscriptionLoading(true);
+      try {
+        let plan: SubscriptionPlan = "FREE";
+        let used = 0;
+        let limit: number | null = 10;
+        try {
+          const cur = normalizeSubscriptionCurrent(
+            (await hostelGhar.subscriptions.current(uuid)).data
+          );
+          plan = (cur?.subscription?.plan ?? "FREE") as SubscriptionPlan;
+          used = cur?.limits?.residentCount ?? 0;
+          limit = cur?.limits?.residentLimit ?? null;
+          try {
+            const chk = normalizeCheckLimit(
+              (await hostelGhar.subscriptions.checkLimit(uuid, 1)).data
+            );
+            if (!cur?.subscription) plan = (chk?.currentPlan ?? "FREE") as SubscriptionPlan;
+            used = chk?.currentCount ?? used;
+            if (limit == null) limit = chk?.limit ?? null;
+          } catch {
+            /* keep current values */
+          }
+        } catch {
+          try {
+            const chk = normalizeCheckLimit(
+              (await hostelGhar.subscriptions.checkLimit(uuid, 1)).data
+            );
+            plan = (chk?.currentPlan ?? "FREE") as SubscriptionPlan;
+            used = chk?.currentCount ?? 0;
+            limit = chk?.limit ?? null;
+          } catch {
+            /* FREE fallback */
+          }
+        }
+        syncLiveSubscription(plan, used, limit);
+      } finally {
+        setSubscriptionLoading(false);
+      }
+    },
+    [syncLiveSubscription]
+  );
+
+  // Auto-load live plan whenever the owner session resolves — this is the
+  // fix for "lock everywhere until I manually visit /subscription".
+  useEffect(() => {
+    if (isLoading || !user || user.role !== "HOSTEL_OWNER") return;
+    refreshSubscription().catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoading, user?.id, user?.role, user?.hostelId]);
 
   useEffect(() => {
     const cached = readCachedUser();
@@ -199,6 +323,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         writeCachedUser(normalized);
         redirectTo = routeForRole(normalized.role);
         setPlanOverride(null);
+        // Fetch the REAL plan immediately so the landing page never gates on
+        // the stale cached FREE plan (no need to visit /subscription first).
+        refreshSubscription(normalized).catch(() => undefined);
         router.push(redirectTo);
         return {
           ok: true,
@@ -211,7 +338,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setIsAuthenticating(false);
       }
     },
-    [router]
+    [router, refreshSubscription]
   );
 
   const register = useCallback(
@@ -330,6 +457,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       authError,
       role,
       plan,
+      subscriptionLoading,
       // Backend is cookie-based (HttpOnly session cookie, withCredentials).
       // A local Bearer token is optional/legacy — presence of `user` is the session signal.
       isAuthenticated: Boolean(user),
@@ -337,8 +465,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       register,
       logout,
       refresh,
+      refreshSubscription,
       switchRole,
       switchPlan,
+      syncLiveSubscription,
     }),
     [
       user,
@@ -347,12 +477,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       authError,
       role,
       plan,
+      subscriptionLoading,
       login,
       register,
       logout,
       refresh,
+      refreshSubscription,
       switchRole,
       switchPlan,
+      syncLiveSubscription,
     ]
   );
 

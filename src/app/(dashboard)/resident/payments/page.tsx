@@ -49,8 +49,7 @@ export default function ResidentPaymentsPage() {
   const fees = useMemo(() => data ?? [], [data]);
   const due = useMemo(() => fees.find((f) => f.status !== "PAID") ?? null, [fees]);
 
-  const payableOf = (f: NonNullable<typeof due>) =>
-    Number(f.totalPayable ?? f.amount) || 0;
+  const payableOf = (f: NonNullable<typeof due>) => Number(f.totalPayable ?? f.amount) || 0;
 
   const currentMeta = PAYMENT_METHODS_META[method];
   const activeQrSrc = qrs[method];
@@ -96,9 +95,13 @@ export default function ResidentPaymentsPage() {
             ) : due ? (
               <>
                 <p className="text-[13px] text-neutral-400">
-                  Due · {due.month ?? (due.billingMonth && due.billingYear ? `Month ${due.billingMonth} ${due.billingYear}` : "Current billing")}
+                  Due ·{" "}
+                  {due.month ??
+                    (due.billingMonth && due.billingYear
+                      ? `Month ${due.billingMonth} ${due.billingYear}`
+                      : "Current billing")}
                 </p>
-                <p className="mt-1 text-3xl font-extrabold text-brand tracking-tight">
+                <p className="mt-1 text-3xl font-extrabold tracking-tight text-brand">
                   {formatCurrency(payableOf(due))}
                 </p>
                 <p className="mt-1 text-[13px] text-neutral-300">
@@ -121,11 +124,7 @@ export default function ResidentPaymentsPage() {
               <label className="mb-2 block text-[11px] font-semibold uppercase tracking-wider text-neutral-300">
                 Payment Options (Click to view QR)
               </label>
-              <div
-                className="grid grid-cols-3 gap-2"
-                role="radiogroup"
-                aria-label="Payment method"
-              >
+              <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Payment method">
                 {(["ESEWA", "KHALTI", "BANK"] as const).map((m) => {
                   const isSelected = method === m;
                   const hasQr = Boolean(qrs[m]);
@@ -148,7 +147,11 @@ export default function ResidentPaymentsPage() {
                       </span>
                       <span
                         className={`mt-1 text-[10px] font-medium ${
-                          isSelected ? "text-brand-ink/70" : hasQr ? "text-emerald-300" : "text-neutral-400"
+                          isSelected
+                            ? "text-brand-ink/70"
+                            : hasQr
+                              ? "text-emerald-300"
+                              : "text-neutral-400"
                         }`}
                       >
                         {hasQr ? "QR Ready" : "QR"}
@@ -161,7 +164,9 @@ export default function ResidentPaymentsPage() {
 
             {/* Quick helper note */}
             <div className="mt-4 flex items-center justify-between rounded-lg bg-white/10 px-3 py-2 text-xs text-neutral-200">
-              <span>Pay via <strong>{currentMeta.label}</strong> QR below</span>
+              <span>
+                Pay via <strong>{currentMeta.label}</strong> QR below
+              </span>
               <button
                 type="button"
                 onClick={() => handleOpenQr()}
@@ -173,7 +178,7 @@ export default function ResidentPaymentsPage() {
           </Card>
 
           {/* Interactive QR Display Card */}
-          <Card className="border border-neutral-200/90 p-5 shadow-xs">
+          <Card className="shadow-xs border border-neutral-200/90 p-5">
             <div className="flex items-center justify-between border-b border-neutral-100 pb-3">
               <div className="flex items-center gap-2">
                 <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-neutral-100">
@@ -210,9 +215,9 @@ export default function ResidentPaymentsPage() {
                     <img
                       src={activeQrSrc}
                       alt={`${currentMeta.label} payment QR`}
-                      className="h-52 w-52 rounded-xl object-contain transition-transform group-hover:scale-102"
+                      className="group-hover:scale-102 h-52 w-52 rounded-xl object-contain transition-transform"
                     />
-                    <div className="absolute inset-0 flex items-center justify-center rounded-2xl bg-black/30 opacity-0 backdrop-blur-xs transition-opacity group-hover:opacity-100">
+                    <div className="backdrop-blur-xs absolute inset-0 flex items-center justify-center rounded-2xl bg-black/30 opacity-0 transition-opacity group-hover:opacity-100">
                       <span className="flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-xs font-bold text-neutral-900 shadow">
                         <QrCode className="h-3.5 w-3.5" /> Tap to Scan
                       </span>
@@ -238,7 +243,7 @@ export default function ResidentPaymentsPage() {
                       {copied ? (
                         <>
                           <Check className="h-3 w-3 text-emerald-600" />
-                          <span className="text-emerald-600 font-medium">Copied</span>
+                          <span className="font-medium text-emerald-600">Copied</span>
                         </>
                       ) : (
                         <>
@@ -281,9 +286,10 @@ export default function ResidentPaymentsPage() {
                     No {currentMeta.label} QR yet
                   </p>
                   <p className="mt-1 max-w-xs text-xs text-neutral-500">
-                    The hostel owner hasn&apos;t uploaded a {currentMeta.label} QR. You can switch to another payment option above or pay at the desk.
+                    The hostel owner hasn&apos;t uploaded a {currentMeta.label} QR. You can switch
+                    to another payment option above or pay at the desk.
                   </p>
-                  <div className="mt-3 flex items-center gap-1.5 rounded-lg bg-amber-50 px-3 py-1.5 text-xs text-amber-800 border border-amber-200">
+                  <div className="mt-3 flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs text-amber-800">
                     <AlertCircle className="h-3.5 w-3.5 text-amber-600" />
                     <span>Ask hostel desk to add QR in Settings</span>
                   </div>
@@ -292,7 +298,8 @@ export default function ResidentPaymentsPage() {
 
               {/* Instructions */}
               <p className="mt-3.5 text-center text-xs text-neutral-500">
-                After paying via QR, upload your receipt screenshot — owner reviews it and marks your fee paid.
+                After paying via QR, upload your receipt screenshot — owner reviews it and marks
+                your fee paid.
               </p>
               {due && (
                 <Button
@@ -333,11 +340,18 @@ export default function ResidentPaymentsPage() {
               </p>
             ) : error ? (
               <div className="p-5">
-                <ErrorState title="Couldn't load fees" description={error.message} onRetry={retry} />
+                <ErrorState
+                  title="Couldn't load fees"
+                  description={error.message}
+                  onRetry={retry}
+                />
               </div>
             ) : fees.length === 0 ? (
               <div className="p-5">
-                <EmptyState title="No fees yet" description="Your monthly ledger will appear here." />
+                <EmptyState
+                  title="No fees yet"
+                  description="Your monthly ledger will appear here."
+                />
               </div>
             ) : (
               <ul className="divide-y divide-neutral-100">
@@ -374,7 +388,9 @@ export default function ResidentPaymentsPage() {
                       <div className="flex items-center gap-2.5">
                         <Badge tone={statusTone(p.status)}>{p.status}</Badge>
                         {proof && (
-                          <Badge tone={proofStatusTone(proof.status)}>{proofStatusLabel(proof.status)}</Badge>
+                          <Badge tone={proofStatusTone(proof.status)}>
+                            {proofStatusLabel(proof.status)}
+                          </Badge>
                         )}
                         {isUnpaid && (
                           <Button

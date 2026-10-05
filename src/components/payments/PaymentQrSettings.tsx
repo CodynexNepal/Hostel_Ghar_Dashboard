@@ -63,8 +63,13 @@ async function resolveHostelId(preferred?: string | null): Promise<string | null
 export function PaymentQrSettings() {
   const { success, error: toastError } = useToast();
   const { user, role } = useAuth();
-  const manager = String(role ?? "").toUpperCase().includes("OWNER") ||
-    String(role ?? "").toUpperCase().includes("ADMIN");
+  const manager =
+    String(role ?? "")
+      .toUpperCase()
+      .includes("OWNER") ||
+    String(role ?? "")
+      .toUpperCase()
+      .includes("ADMIN");
   const [hostelId, setHostelId] = useState<string | null>(null);
   const [qrs, setQrs] = useState<QrMap>({});
   const [labels, setLabels] = useState<LabelMap>({});
@@ -176,7 +181,9 @@ export function PaymentQrSettings() {
           await live.refresh();
           success(
             `${PAYMENT_METHODS_META[method].label} QR Saved`,
-            existing ? "QR replaced — residents see the new code." : "Residents can now view and scan this QR code."
+            existing
+              ? "QR replaced — residents see the new code."
+              : "Residents can now view and scan this QR code."
           );
           return;
         } catch (err) {
@@ -187,7 +194,10 @@ export function PaymentQrSettings() {
       }
       const dataUrl = await fileToQrDataUrl(file);
       persistLocal({ ...qrs, [method]: dataUrl }, labels);
-      success(`${PAYMENT_METHODS_META[method].label} QR Saved`, "Residents can now view and scan this QR code.");
+      success(
+        `${PAYMENT_METHODS_META[method].label} QR Saved`,
+        "Residents can now view and scan this QR code."
+      );
     } catch (err) {
       toastError("Upload failed", toApiError(err).message);
     } finally {
@@ -205,7 +215,10 @@ export function PaymentQrSettings() {
       try {
         await hostelGhar.paymentQrs.remove(existing.id);
         await live.refresh();
-        success("QR Removed", `${PAYMENT_METHODS_META[method].label} QR is no longer visible to residents.`);
+        success(
+          "QR Removed",
+          `${PAYMENT_METHODS_META[method].label} QR is no longer visible to residents.`
+        );
         return;
       } catch (err) {
         toastError("Remove failed", toApiError(err).message);
@@ -215,7 +228,10 @@ export function PaymentQrSettings() {
     const nextQrs = { ...qrs };
     delete nextQrs[method];
     persistLocal(nextQrs, labels);
-    success("QR Removed", `${PAYMENT_METHODS_META[method].label} QR is no longer visible to residents.`);
+    success(
+      "QR Removed",
+      `${PAYMENT_METHODS_META[method].label} QR is no longer visible to residents.`
+    );
   }
 
   function handleLabelChange(method: PaymentQrMethod, value: string) {
@@ -294,268 +310,289 @@ export function PaymentQrSettings() {
   return (
     <div id="payment-qrs">
       <Card className="overflow-hidden border border-neutral-200/80 shadow-sm">
-      <CardHeader
-        title="Hostel Payment QR Codes"
-        subtitle="Manage eSewa, Khalti, and Bank payment QRs shown to residents when paying monthly fees"
-        action={
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => void handlePopulateDemo()}
-              loading={loadingDemo}
-              className="gap-1.5 text-xs text-neutral-700"
-            >
-              <Sparkles className="h-3.5 w-3.5 text-amber-500" /> Load Demo QRs
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => void handleRefreshList()}
-              loading={loadingList}
-              className="gap-1.5 text-xs"
-            >
-              <RefreshCw className="h-3.5 w-3.5" /> Refresh
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => setPreviewMethod("ESEWA")}
-              className="gap-1.5 text-xs"
-            >
-              <Eye className="h-3.5 w-3.5" /> Preview Resident View
-            </Button>
-          </div>
-        }
-      />
+        <CardHeader
+          title="Hostel Payment QR Codes"
+          subtitle="Manage eSewa, Khalti, and Bank payment QRs shown to residents when paying monthly fees"
+          action={
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => void handlePopulateDemo()}
+                loading={loadingDemo}
+                className="gap-1.5 text-xs text-neutral-700"
+              >
+                <Sparkles className="h-3.5 w-3.5 text-amber-500" /> Load Demo QRs
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => void handleRefreshList()}
+                loading={loadingList}
+                className="gap-1.5 text-xs"
+              >
+                <RefreshCw className="h-3.5 w-3.5" /> Refresh
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setPreviewMethod("ESEWA")}
+                className="gap-1.5 text-xs"
+              >
+                <Eye className="h-3.5 w-3.5" /> Preview Resident View
+              </Button>
+            </div>
+          }
+        />
 
-      <div className="border-b border-neutral-100 bg-neutral-50/70 px-5 py-3">
-        <p className="flex items-center gap-2 text-xs text-neutral-600">
-          <Info className="h-4 w-4 text-brand-ink shrink-0" />
-          <span>
-            Residents see these QR codes under <strong>My Payments</strong> (GET /resident). After scanning and paying, they can present their transaction reference or screenshot at the desk.
-            {!backendAvailable && (
-              <> <strong>Backend offline</strong> — showing local cache; uploads sync when the API is reachable.</>
-            )}
-            {!manager && <> <strong>Read-only</strong> — sign in as owner/admin to manage QRs.</>}
-          </span>
-        </p>
-      </div>
+        <div className="border-b border-neutral-100 bg-neutral-50/70 px-5 py-3">
+          <p className="flex items-center gap-2 text-xs text-neutral-600">
+            <Info className="h-4 w-4 shrink-0 text-brand-ink" />
+            <span>
+              Residents see these QR codes under <strong>My Payments</strong> (GET /resident). After
+              scanning and paying, they can present their transaction reference or screenshot at the
+              desk.
+              {!backendAvailable && (
+                <>
+                  {" "}
+                  <strong>Backend offline</strong> — showing local cache; uploads sync when the API
+                  is reachable.
+                </>
+              )}
+              {!manager && (
+                <>
+                  {" "}
+                  <strong>Read-only</strong> — sign in as owner/admin to manage QRs.
+                </>
+              )}
+            </span>
+          </p>
+        </div>
 
-      <div className="grid gap-6 p-5 lg:grid-cols-3">
-        {PAYMENT_QR_METHODS.map((m) => {
-          const meta = PAYMENT_METHODS_META[m.value];
-          const src = qrs[m.value];
-          const labelValue = labels[m.value] ?? "";
-          const isCurrentDragging = isDragging === m.value;
-          const record = recordByMethod.get(m.value);
-          const active = record
-            ? (record.isActive ?? String(record.status ?? "ACTIVE").toUpperCase() === "ACTIVE")
-            : Boolean(src);
+        <div className="grid gap-6 p-5 lg:grid-cols-3">
+          {PAYMENT_QR_METHODS.map((m) => {
+            const meta = PAYMENT_METHODS_META[m.value];
+            const src = qrs[m.value];
+            const labelValue = labels[m.value] ?? "";
+            const isCurrentDragging = isDragging === m.value;
+            const record = recordByMethod.get(m.value);
+            const active = record
+              ? (record.isActive ?? String(record.status ?? "ACTIVE").toUpperCase() === "ACTIVE")
+              : Boolean(src);
 
-          return (
-            <div
-              key={m.value}
-              className={`relative flex flex-col justify-between rounded-2xl border transition-all ${
-                src
-                  ? "border-neutral-200/90 bg-white shadow-xs hover:border-neutral-300"
-                  : "border-dashed border-neutral-300 bg-neutral-50/50"
-              }`}
-            >
-              <div className="p-4">
-                {/* Method Header Badge */}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-neutral-100">
-                      {methodIcons[m.value]}
-                    </span>
-                    <div>
-                      <p className="text-sm font-bold text-neutral-900">{meta.label}</p>
-                      <p className="text-[11px] text-neutral-500">{meta.tagline}</p>
-                    </div>
-                  </div>
-                  {src ? (
-                    active ? (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
-                        <CheckCircle2 className="h-3 w-3" /> Active
+            return (
+              <div
+                key={m.value}
+                className={`relative flex flex-col justify-between rounded-2xl border transition-all ${
+                  src
+                    ? "shadow-xs border-neutral-200/90 bg-white hover:border-neutral-300"
+                    : "border-dashed border-neutral-300 bg-neutral-50/50"
+                }`}
+              >
+                <div className="p-4">
+                  {/* Method Header Badge */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-neutral-100">
+                        {methodIcons[m.value]}
                       </span>
+                      <div>
+                        <p className="text-sm font-bold text-neutral-900">{meta.label}</p>
+                        <p className="text-[11px] text-neutral-500">{meta.tagline}</p>
+                      </div>
+                    </div>
+                    {src ? (
+                      active ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                          <CheckCircle2 className="h-3 w-3" /> Active
+                        </span>
+                      ) : (
+                        <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] font-medium text-neutral-500">
+                          Inactive
+                        </span>
+                      )
                     ) : (
                       <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] font-medium text-neutral-500">
-                        Inactive
+                        Not Added
                       </span>
-                    )
-                  ) : (
-                    <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] font-medium text-neutral-500">
-                      Not Added
-                    </span>
-                  )}
-                </div>
+                    )}
+                  </div>
 
-                {/* QR Image Area / Dropzone */}
-                <div
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    setIsDragging(m.value);
-                  }}
-                  onDragLeave={() => setIsDragging(null)}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    setIsDragging(null);
-                    const droppedFile = e.dataTransfer.files?.[0];
-                    if (droppedFile) void handleFile(m.value, droppedFile);
-                  }}
-                  onClick={() => {
-                    if (!src) fileRefs.current[m.value]?.click();
-                  }}
-                  className={`mt-3.5 flex h-48 flex-col items-center justify-center overflow-hidden rounded-xl border transition-all ${
-                    isCurrentDragging
-                      ? "border-brand-ink bg-brand/10 ring-2 ring-brand"
-                      : src
-                        ? "border-neutral-200 bg-neutral-100/50"
-                        : "cursor-pointer border-dashed border-neutral-300 bg-white hover:border-neutral-400 hover:bg-neutral-50"
-                  }`}
-                >
-                  {src ? (
-                    <div className="group relative flex h-full w-full items-center justify-center p-2">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={src}
-                        alt={`${meta.label} QR`}
-                        className="h-full w-full object-contain transition-transform group-hover:scale-105"
-                      />
-                      <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 backdrop-blur-xs transition-opacity group-hover:opacity-100">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="bg-white text-neutral-900 hover:bg-neutral-100"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setPreviewMethod(m.value);
-                          }}
-                        >
-                          <Eye className="h-3.5 w-3.5" /> Full View
-                        </Button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex flex-col items-center p-4 text-center">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-neutral-100 text-neutral-400">
-                        <QrCode className="h-6 w-6" />
-                      </div>
-                      <p className="mt-2 text-xs font-semibold text-neutral-700">
-                        Upload {meta.label} QR Code
-                      </p>
-                      <p className="mt-0.5 text-[11px] text-neutral-400">
-                        Click or drag & drop (PNG, JPG)
-                      </p>
-                    </div>
-                  )}
-                </div>
-
-                {/* Account Details Inputs — backend requires accountName + accountIdentifier */}
-                <div className="mt-3.5 grid gap-2.5">
-                  <Input
-                    label={
-                      m.value === "BANK" ? "Bank / Account Name" : `${meta.label} Account Name`
-                    }
-                    placeholder={user?.hostelName || "Sunrise Hostel"}
-                    value={record?.accountName ?? splitAccountLabel(labelValue, user?.hostelName || "").accountName}
-                    onChange={(e) => {
-                      const current = splitAccountLabel(
-                        labelValue,
-                        user?.hostelName || "Sunrise Hostel"
-                      );
-                      const next = `${e.target.value}${current.accountIdentifier ? ` • ${current.accountIdentifier}` : ""}`;
-                      void handleLabelChange(m.value, next);
+                  {/* QR Image Area / Dropzone */}
+                  <div
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      setIsDragging(m.value);
                     }}
-                  />
-                  <Input
-                    label={
-                      m.value === "BANK" ? "Account Number" : `${meta.label} ID / Mobile Number`
-                    }
-                    placeholder={meta.sampleAccount}
-                    value={record?.accountIdentifier ?? splitAccountLabel(labelValue, "").accountIdentifier}
-                    onChange={(e) => {
-                      const current = splitAccountLabel(
-                        labelValue,
-                        user?.hostelName || "Sunrise Hostel"
-                      );
-                      const next = `${current.accountName}${e.target.value ? ` • ${e.target.value}` : ""}`;
-                      void handleLabelChange(m.value, next);
+                    onDragLeave={() => setIsDragging(null)}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      setIsDragging(null);
+                      const droppedFile = e.dataTransfer.files?.[0];
+                      if (droppedFile) void handleFile(m.value, droppedFile);
                     }}
+                    onClick={() => {
+                      if (!src) fileRefs.current[m.value]?.click();
+                    }}
+                    className={`mt-3.5 flex h-48 flex-col items-center justify-center overflow-hidden rounded-xl border transition-all ${
+                      isCurrentDragging
+                        ? "border-brand-ink bg-brand/10 ring-2 ring-brand"
+                        : src
+                          ? "border-neutral-200 bg-neutral-100/50"
+                          : "cursor-pointer border-dashed border-neutral-300 bg-white hover:border-neutral-400 hover:bg-neutral-50"
+                    }`}
+                  >
+                    {src ? (
+                      <div className="group relative flex h-full w-full items-center justify-center p-2">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={src}
+                          alt={`${meta.label} QR`}
+                          className="h-full w-full object-contain transition-transform group-hover:scale-105"
+                        />
+                        <div className="backdrop-blur-xs absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="bg-white text-neutral-900 hover:bg-neutral-100"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setPreviewMethod(m.value);
+                            }}
+                          >
+                            <Eye className="h-3.5 w-3.5" /> Full View
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center p-4 text-center">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-neutral-100 text-neutral-400">
+                          <QrCode className="h-6 w-6" />
+                        </div>
+                        <p className="mt-2 text-xs font-semibold text-neutral-700">
+                          Upload {meta.label} QR Code
+                        </p>
+                        <p className="mt-0.5 text-[11px] text-neutral-400">
+                          Click or drag & drop (PNG, JPG)
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Account Details Inputs — backend requires accountName + accountIdentifier */}
+                  <div className="mt-3.5 grid gap-2.5">
+                    <Input
+                      label={
+                        m.value === "BANK" ? "Bank / Account Name" : `${meta.label} Account Name`
+                      }
+                      placeholder={user?.hostelName || "Sunrise Hostel"}
+                      value={
+                        record?.accountName ??
+                        splitAccountLabel(labelValue, user?.hostelName || "").accountName
+                      }
+                      onChange={(e) => {
+                        const current = splitAccountLabel(
+                          labelValue,
+                          user?.hostelName || "Sunrise Hostel"
+                        );
+                        const next = `${e.target.value}${current.accountIdentifier ? ` • ${current.accountIdentifier}` : ""}`;
+                        void handleLabelChange(m.value, next);
+                      }}
+                    />
+                    <Input
+                      label={
+                        m.value === "BANK" ? "Account Number" : `${meta.label} ID / Mobile Number`
+                      }
+                      placeholder={meta.sampleAccount}
+                      value={
+                        record?.accountIdentifier ??
+                        splitAccountLabel(labelValue, "").accountIdentifier
+                      }
+                      onChange={(e) => {
+                        const current = splitAccountLabel(
+                          labelValue,
+                          user?.hostelName || "Sunrise Hostel"
+                        );
+                        const next = `${current.accountName}${e.target.value ? ` • ${e.target.value}` : ""}`;
+                        void handleLabelChange(m.value, next);
+                      }}
+                    />
+                    <p className="text-[11px] text-neutral-400">
+                      Shown beneath the QR so residents can verify or copy it
+                    </p>
+                  </div>
+
+                  {/* Hidden File Input */}
+                  <input
+                    ref={(el) => {
+                      fileRefs.current[m.value] = el;
+                    }}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    aria-label={`Upload ${meta.label} QR Code`}
+                    onChange={(e) => void handleFile(m.value, e.target.files?.[0])}
                   />
-                  <p className="text-[11px] text-neutral-400">
-                    Shown beneath the QR so residents can verify or copy it
-                  </p>
                 </div>
 
-                {/* Hidden File Input */}
-                <input
-                  ref={(el) => {
-                    fileRefs.current[m.value] = el;
-                  }}
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  aria-label={`Upload ${meta.label} QR Code`}
-                  onChange={(e) => void handleFile(m.value, e.target.files?.[0])}
-                />
-              </div>
-
-              {/* Card Footer Actions */}
-              <div className="flex items-center justify-between gap-2 border-t border-neutral-100 bg-neutral-50/50 p-3">
-                <Button
-                  size="sm"
-                  variant={src ? "outline" : "primary"}
-                  onClick={() => fileRefs.current[m.value]?.click()}
-                  loading={saving === m.value}
-                  disabled={!manager}
-                  className="gap-1.5 text-xs"
-                >
-                  <Upload className="h-3.5 w-3.5" /> {src ? "Replace QR" : "Upload QR"}
-                </Button>
-                <div className="flex items-center gap-1.5">
-                  {record && manager && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => void handleToggle(m.value)}
-                      className="gap-1 px-2 text-xs text-neutral-600 hover:bg-neutral-100"
-                      title={active ? "Deactivate (hide from residents)" : "Activate (show to residents)"}
-                    >
-                      <Power className="h-3.5 w-3.5" /> {active ? "Deactivate" : "Activate"}
-                    </Button>
-                  )}
-                  {src && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => void handleRemove(m.value)}
-                      disabled={!manager}
-                      className="gap-1 px-2 text-xs text-red-600 hover:bg-red-50 hover:text-red-700"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" /> Remove
-                    </Button>
-                  )}
+                {/* Card Footer Actions */}
+                <div className="flex items-center justify-between gap-2 border-t border-neutral-100 bg-neutral-50/50 p-3">
+                  <Button
+                    size="sm"
+                    variant={src ? "outline" : "primary"}
+                    onClick={() => fileRefs.current[m.value]?.click()}
+                    loading={saving === m.value}
+                    disabled={!manager}
+                    className="gap-1.5 text-xs"
+                  >
+                    <Upload className="h-3.5 w-3.5" /> {src ? "Replace QR" : "Upload QR"}
+                  </Button>
+                  <div className="flex items-center gap-1.5">
+                    {record && manager && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => void handleToggle(m.value)}
+                        className="gap-1 px-2 text-xs text-neutral-600 hover:bg-neutral-100"
+                        title={
+                          active
+                            ? "Deactivate (hide from residents)"
+                            : "Activate (show to residents)"
+                        }
+                      >
+                        <Power className="h-3.5 w-3.5" /> {active ? "Deactivate" : "Activate"}
+                      </Button>
+                    )}
+                    {src && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => void handleRemove(m.value)}
+                        disabled={!manager}
+                        className="gap-1 px-2 text-xs text-red-600 hover:bg-red-50 hover:text-red-700"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" /> Remove
+                      </Button>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
 
-      {/* Preview Dialog for Owner — GET /preview (resident view as owners see it) */}
-      <PaymentQrDialog
-        open={Boolean(previewMethod)}
-        onClose={() => setPreviewMethod(null)}
-        method={previewMethod ?? "ESEWA"}
-        mode="preview"
-        hostelId={hostelId}
-        hostelName={user?.hostelName || "Sunrise Boys Hostel"}
-        amountLabel="Rs. 12,000 (Sample Fee)"
-        feeDescription="Resident View Preview"
-      />
-    </Card>
-  </div>
+        {/* Preview Dialog for Owner — GET /preview (resident view as owners see it) */}
+        <PaymentQrDialog
+          open={Boolean(previewMethod)}
+          onClose={() => setPreviewMethod(null)}
+          method={previewMethod ?? "ESEWA"}
+          mode="preview"
+          hostelId={hostelId}
+          hostelName={user?.hostelName || "Sunrise Boys Hostel"}
+          amountLabel="Rs. 12,000 (Sample Fee)"
+          feeDescription="Resident View Preview"
+        />
+      </Card>
+    </div>
   );
 }

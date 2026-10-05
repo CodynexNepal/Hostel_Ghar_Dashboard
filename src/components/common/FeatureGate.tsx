@@ -25,9 +25,11 @@ export function FeatureGate({
   className?: string;
   fallback?: React.ReactNode;
 }) {
-  const { canAccess } = usePermissions();
+  const { canAccess, isPlanLoading } = usePermissions();
   const { openUpgrade } = useUpgrade();
 
+  // While the live plan resolves, render content — never flash a lock.
+  if (isPlanLoading) return <>{children}</>;
   if (canAccess(permission)) return <>{children}</>;
   if (mode === "hide") return fallback ? <>{fallback}</> : null;
 
@@ -61,9 +63,9 @@ export function LockedAction({
   onUnlocked?: () => void;
   className?: string;
 }) {
-  const { canAccess } = usePermissions();
+  const { canAccess, isPlanLoading } = usePermissions();
   const { openUpgrade } = useUpgrade();
-  const allowed = canAccess(permission);
+  const allowed = isPlanLoading ? true : canAccess(permission);
 
   return (
     <span

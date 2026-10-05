@@ -1,6 +1,8 @@
-import api, { toApiError, type ApiErrorShape } from "./axios";
+import api, { getHostelId, toApiError, type ApiErrorShape } from "./axios";
 import type { ApiEnvelope, PaginationMeta, Paginated, ListParams } from "./api-types";
 import type {
+  BackendFeeStatus,
+  FeeStatus,
   LoginPayload,
   LoginResponse,
   RegisterPayload,
@@ -54,7 +56,16 @@ import type {
   LoadDemoQrPayload,
   CreatePaymentQrPayload,
   UpdatePaymentQrPayload,
+  UpdateFeeStatusPayload,
   PatchPaymentQrPayload,
+  BackendPlan,
+  SubscriptionCurrent,
+  SubscribePayload,
+  SubscriptionCheckLimit,
+  SubscriptionHistoryItem,
+  SubscriptionPlanId,
+  SubscriptionRequest,
+  SubscriptionReviewAction,
 } from "./api-types";
 import type { Hostel, Room } from "../types/hostel";
 import type { Resident } from "../types/resident";
@@ -206,6 +217,29 @@ function cleanHostelParams<T extends Record<string, unknown> | undefined>(
 }
 
 /**
+ * Resolve the hostel scope for owner endpoints that require it
+ * (subscriptions current/subscribe/cancel/check-limit, fees ledger, …).
+ * Priority mirrors the backend `resolveHostelId` middleware:
+ * explicit id → cookie `hg_hostel_id` (axios sends it as `X-Hostel-Id`) →
+ * first hostel from GET /hostels. Returns null when nothing resolves —
+ * callers must render the link-hostel empty state, never call with 400.
+ */
+export async function resolveOwnerHostelId(preferred?: string | null): Promise<string | null> {
+  const direct = validHostelId(preferred);
+  if (direct) return direct;
+  const fromCookie = validHostelId(getHostelId());
+  if (fromCookie) return fromCookie;
+  try {
+    const list = await api.get<Hostel[] | ApiEnvelope<Hostel[]>>(`${PREFIX}/hostels`, {
+      params: { limit: 1 },
+    });
+    return toPaginated<HostelDetail>(list.data).items[0]?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Map frontend BANK → backend BANK_TRANSFER enum.
  * Backend `paymentMethod` only accepts: ESEWA | KHALTI | BANK_TRANSFER.
  */
@@ -217,6 +251,31 @@ export function toBackendPaymentMethod(raw: unknown): string {
   if (v.includes("KHALTI")) return "KHALTI";
   if (v.includes("ESEWA")) return "ESEWA";
   return v;
+}
+
+/**
+ * Map UI fee status → backend canonical enum.
+ * UI uses PARTIAL as display alias; backend uses PARTIALLY_PAID.
+ * NULL/empty is treated as PENDING for safety (backend rejects null).
+ */
+export function toBackendFeeStatus(raw: unknown): BackendFeeStatus {
+  const v = String(raw ?? "")
+    .toUpperCase()
+    .trim();
+  if (v === "PARTIAL" || v === "PARTIALLY_PAID" || v === "PARTIALLY-PAID") return "PARTIALLY_PAID";
+  if (v === "PAID") return "PAID";
+  if (v === "OVERDUE") return "OVERDUE";
+  return "PENDING";
+}
+
+/** UI display alias — PARTIALLY_PAID → PARTIAL. */
+export function toDisplayFeeStatus(raw: unknown): FeeStatus {
+  const v = String(raw ?? "")
+    .toUpperCase()
+    .trim();
+  if (v === "PARTIALLY_PAID" || v === "PARTIALLY-PAID" || v === "PARTIAL") return "PARTIAL";
+  if (v === "PAID" || v === "PENDING" || v === "OVERDUE") return v as FeeStatus;
+  return "PENDING";
 }
 
 /**
@@ -602,18 +661,22 @@ export function normalizeDashboardPayment(raw: unknown): Fee {
     pick("paidAmount", "paid_amount", "paid", "collectedAmount", "amountPaid"),
     0
   );
-  const statusRaw = String(
-    pick("status", "feeStatus", "paymentStatus", "payment_status") ?? ""
-  ).toUpperCase();
-  const status: Fee["status"] = (["PAID", "PENDING", "OVERDUE", "PARTIAL"] as const).includes(
-    statusRaw as Fee["status"]
-  )
-    ? (statusRaw as Fee["status"])
-    : totalPayable > 0 && paidAmount >= totalPayable
-      ? "PAID"
-      : paidAmount > 0
-        ? "PARTIAL"
-        : "PENDING";
+  const statusRaw = String(pick("status", "feeStatus", "paymentStatus", "payment_status") ?? "")
+    .toUpperCase()
+    .trim();
+  // Backend canonical enum uses PARTIALLY_PAID — UI uses PARTIAL as display alias.
+  const status: Fee["status"] =
+    statusRaw === "PARTIALLY_PAID" || statusRaw === "PARTIALLY-PAID" || statusRaw === "PARTIAL"
+      ? "PARTIAL"
+      : (["PAID", "PENDING", "OVERDUE"] as const).includes(
+            statusRaw as "PAID" | "PENDING" | "OVERDUE"
+          )
+        ? (statusRaw as "PAID" | "PENDING" | "OVERDUE")
+        : totalPayable > 0 && paidAmount >= totalPayable
+          ? "PAID"
+          : paidAmount > 0
+            ? "PARTIAL"
+            : "PENDING";
   const firstName = str(pick("firstName", "first_name"));
   const lastName = str(pick("lastName", "last_name"));
   const composed = `${firstName} ${lastName}`.trim();
@@ -1031,7 +1094,12 @@ function analyticsFeeCounts(
   const pending = num(pick("pendingFees", "pending_fees", "pendingCount"));
   const partial = num(pick("partialFees", "partial_fees", "partialCount"));
   const overdue = num(pick("overdueFees", "overdue_fees", "overdueCount"));
-  if (paid === undefined && pending === undefined && partial === undefined && overdue === undefined) {
+  if (
+    paid === undefined &&
+    pending === undefined &&
+    partial === undefined &&
+    overdue === undefined
+  ) {
     return undefined;
   }
   return { paid: paid ?? 0, pending: pending ?? 0, partial: partial ?? 0, overdue: overdue ?? 0 };
@@ -1140,6 +1208,82 @@ export function normalizeAdminSummary(raw: unknown): AdminSummaryWithCounts {
   };
 }
 
+/* ---------------- Subscriptions (live contract) ---------------- */
+
+function normalizePlanFeatures(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((f) => {
+      if (typeof f === "string") return f;
+      if (f !== null && typeof f === "object" && "label" in f) {
+        return String((f as { label?: unknown }).label ?? "");
+      }
+      return "";
+    })
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+function normalizeBackendPlan(raw: unknown): BackendPlan {
+  const r = (raw ?? {}) as Record<string, unknown>;
+  const pick = (...keys: string[]): unknown => {
+    for (const k of keys) {
+      const v = r[k];
+      if (v !== undefined && v !== null && v !== "") return v;
+    }
+    return undefined;
+  };
+  const limits = (pick("limits") ?? {}) as Record<string, unknown>;
+  const numOrNull = (v: unknown): number | null | undefined => {
+    if (v === undefined) return undefined;
+    if (v === null) return null;
+    const n = typeof v === "string" ? Number(v) : (v as number);
+    return Number.isFinite(n) ? n : undefined;
+  };
+  const flags = (pick("featureFlags", "feature_flags", "flags") ?? {}) as Record<string, unknown>;
+  return {
+    id: String(pick("id", "plan", "code") ?? "FREE").toUpperCase() as BackendPlan["id"],
+    name: String(pick("name", "title") ?? ""),
+    tagline: (pick("tagline", "description") as string | undefined) ?? undefined,
+    price: numOrNull(pick("price", "priceMonthly", "amount")) ?? undefined,
+    currency: (pick("currency") as string | undefined) ?? "NPR",
+    billingPeriod: (pick("billingPeriod", "billing_period") as string | undefined) ?? undefined,
+    formattedPrice: (pick("formattedPrice", "formatted_price") as string | undefined) ?? undefined,
+    badge: (pick("badge") as string | null | undefined) ?? null,
+    features: normalizePlanFeatures(pick("features", "featureList")),
+    buttonText: (pick("buttonText", "button_text", "cta") as string | undefined) ?? undefined,
+    cta: (pick("cta", "buttonText", "button_text") as string | undefined) ?? undefined,
+    limits:
+      Object.keys(limits).length > 0
+        ? {
+            residents: numOrNull(limits.residents ?? limits.maxResidents),
+            hostels: numOrNull(limits.hostels ?? limits.maxHostels),
+            maxResidents: numOrNull(limits.maxResidents ?? limits.residents),
+            maxHostels: numOrNull(limits.maxHostels ?? limits.hostels),
+          }
+        : null,
+    featureFlags: Object.fromEntries(Object.entries(flags).map(([k, v]) => [k, Boolean(v)])),
+    isCurrent: Boolean(pick("isCurrent", "is_current", "current")),
+  };
+}
+
+/** Normalize `GET /subscriptions/plans` tier list (isCurrent when personalized). */
+export function normalizePlans(raw: unknown): BackendPlan[] {
+  const data = unwrap<unknown>(raw);
+  const arr = Array.isArray(data)
+    ? data
+    : Array.isArray((data as { plans?: unknown })?.plans)
+      ? (data as { plans: unknown[] }).plans
+      : [];
+  return arr.map((item) => {
+    const scoped =
+      item !== null && typeof item === "object" && "data" in (item as Record<string, unknown>)
+        ? ((item as { data?: unknown }).data ?? item)
+        : item;
+    return normalizeBackendPlan(scoped);
+  });
+}
+
 /**
  * Normalize a backend expense row into the UI `Expense` shape.
  * Tolerates snake_case / camelCase / `date` aliases.
@@ -1176,6 +1320,220 @@ export function normalizeExpense(raw: unknown): Expense {
     createdAt: pick("createdAt", "created_at") as string | undefined,
     updatedAt: pick("updatedAt", "updated_at") as string | undefined,
   };
+}
+
+/** Normalize `GET /subscriptions/current` (nullable sub + plan + usage). */
+export function normalizeSubscriptionCurrent(raw: unknown): SubscriptionCurrent {
+  const data = unwrap<Record<string, unknown>>(raw) ?? {};
+  const rawSub = (data.subscription ?? data.current ?? null) as Record<string, unknown> | null;
+  const hasSub =
+    rawSub !== null &&
+    typeof rawSub === "object" &&
+    ("id" in rawSub || "plan" in rawSub || "status" in rawSub);
+  const nested = data.plan as Record<string, unknown> | string | null | undefined;
+  const limits = (data.limits ?? data.usage ?? null) as Record<string, unknown> | null;
+  const num = (v: unknown): number | undefined => {
+    if (v === undefined || v === null || v === "") return undefined;
+    const n = typeof v === "string" ? Number(v) : (v as number);
+    return Number.isFinite(n) ? n : undefined;
+  };
+  const numOrNull = (v: unknown): number | null | undefined => {
+    if (v === undefined || v === "") return undefined;
+    if (v === null) return null;
+    const n = typeof v === "string" ? Number(v) : (v as number);
+    return Number.isFinite(n) ? n : undefined;
+  };
+  return {
+    subscription: hasSub
+      ? {
+          id: rawSub?.id != null ? String(rawSub.id) : undefined,
+          plan: toPlanId(rawSub?.plan ?? rawSub?.planName),
+          status: toSubStatus(rawSub?.status),
+          billingCycle: toBilling(rawSub?.billingCycle),
+          price:
+            typeof rawSub?.price === "number" || typeof rawSub?.price === "string"
+              ? rawSub.price
+              : undefined,
+          currency: typeof rawSub?.currency === "string" ? rawSub.currency : undefined,
+          startDate: typeof rawSub?.startDate === "string" ? rawSub.startDate : undefined,
+          endDate:
+            rawSub?.endDate === null
+              ? null
+              : typeof rawSub?.endDate === "string"
+                ? rawSub.endDate
+                : undefined,
+          autoRenew: typeof rawSub?.autoRenew === "boolean" ? rawSub.autoRenew : undefined,
+          hostelId: typeof rawSub?.hostelId === "string" ? rawSub.hostelId : undefined,
+        }
+      : null,
+    plan:
+      nested === null || nested === undefined
+        ? null
+        : typeof nested === "string"
+          ? normalizeBackendPlan({ id: nested })
+          : normalizeBackendPlan({ ...nested, isCurrent: true }),
+    limits: limits
+      ? {
+          residentCount: num(limits.residentCount ?? limits.residentsUsed ?? limits.used),
+          residentLimit: numOrNull(limits.residentLimit ?? limits.residentsLimit ?? limits.limit),
+          residentLimitReached:
+            typeof limits.residentLimitReached === "boolean"
+              ? limits.residentLimitReached
+              : undefined,
+          hostelCount: num(limits.hostelCount ?? limits.hostelsUsed),
+          hostelLimit: numOrNull(limits.hostelLimit ?? limits.hostelsLimit),
+          hostelLimitReached:
+            typeof limits.hostelLimitReached === "boolean" ? limits.hostelLimitReached : undefined,
+        }
+      : null,
+    daysRemaining: num(data.daysRemaining ?? data.days_left ?? data.daysLeft) ?? null,
+  };
+}
+
+function toPlanId(v: unknown): SubscriptionPlanId | undefined {
+  if (v === undefined || v === null || v === "") return undefined;
+  const s = String(v).toUpperCase();
+  if (s === "FREE" || s === "BASIC" || s === "PRO" || s === "ENTERPRISE") return s;
+  return undefined;
+}
+
+function toSubStatus(
+  v: unknown
+): SubscriptionCurrent["subscription"] extends infer _U
+  ? import("./api-types").SubscriptionStatus | undefined
+  : never {
+  if (v === undefined || v === null || v === "") return undefined as never;
+  return String(v).toUpperCase() as never;
+}
+
+function toBilling(v: unknown): import("./api-types").BillingCycle | undefined {
+  if (v === undefined || v === null || v === "") return undefined;
+  return String(v).toUpperCase() as import("./api-types").BillingCycle;
+}
+
+/** Normalize `GET /subscriptions/check-limit` (200 allowed or blocked). */
+export function normalizeCheckLimit(raw: unknown): SubscriptionCheckLimit {
+  const data = unwrap<Record<string, unknown>>(raw) ?? {};
+  const num = (v: unknown): number | undefined => {
+    if (v === undefined || v === null || v === "") return undefined;
+    const n = typeof v === "string" ? Number(v) : (v as number);
+    return Number.isFinite(n) ? n : undefined;
+  };
+  const numOrNull = (v: unknown): number | null | undefined => {
+    if (v === undefined || v === "") return undefined;
+    if (v === null) return null;
+    const n = typeof v === "string" ? Number(v) : (v as number);
+    return Number.isFinite(n) ? n : undefined;
+  };
+  const planRaw = data.currentPlan ?? data.plan ?? data.planName;
+  return {
+    allowed: typeof data.allowed === "boolean" ? data.allowed : undefined,
+    currentPlan: toPlanId(planRaw),
+    planName: typeof data.planName === "string" ? data.planName : undefined,
+    limit: numOrNull(data.limit ?? data.residentLimit),
+    currentCount: num(data.currentCount ?? data.residentCount ?? data.used),
+    message: typeof data.message === "string" ? data.message : undefined,
+    hint: typeof data.hint === "string" ? data.hint : undefined,
+  };
+}
+
+/** Normalize `GET /subscriptions/history` (newest first, with hostel). */
+export function normalizeSubscriptionHistory(raw: unknown): SubscriptionHistoryItem[] {
+  const data = unwrap<unknown>(raw);
+  const arr = Array.isArray(data) ? data : [];
+  return arr.map((row) => {
+    const r = (row ?? {}) as Record<string, unknown>;
+    const hostel = (r.hostel ?? null) as Record<string, unknown> | null;
+    return {
+      id: r.id != null ? String(r.id) : undefined,
+      plan: toPlanId(r.plan),
+      status: toSubStatusLoose(r.status),
+      billingCycle: toBilling(r.billingCycle),
+      price: typeof r.price === "number" || typeof r.price === "string" ? r.price : undefined,
+      currency: typeof r.currency === "string" ? r.currency : undefined,
+      startDate: typeof r.startDate === "string" ? r.startDate : undefined,
+      endDate: r.endDate === null ? null : typeof r.endDate === "string" ? r.endDate : undefined,
+      cancelledAt:
+        r.cancelledAt === null
+          ? null
+          : typeof r.cancelledAt === "string"
+            ? r.cancelledAt
+            : undefined,
+      hostelId: typeof r.hostelId === "string" ? r.hostelId : undefined,
+      hostel:
+        hostel !== null && typeof hostel === "object"
+          ? {
+              id: hostel.id != null ? String(hostel.id) : undefined,
+              name: typeof hostel.name === "string" ? hostel.name : undefined,
+            }
+          : null,
+      hostelName: typeof r.hostelName === "string" ? r.hostelName : undefined,
+      createdAt: typeof r.createdAt === "string" ? r.createdAt : undefined,
+      paymentMethod:
+        typeof r.paymentMethod === "string"
+          ? (r.paymentMethod.toUpperCase() as SubscriptionHistoryItem["paymentMethod"])
+          : undefined,
+      paymentReference:
+        r.paymentReference === null
+          ? null
+          : typeof r.paymentReference === "string"
+            ? r.paymentReference
+            : undefined,
+      proofUrl:
+        r.proofUrl === null ? null : typeof r.proofUrl === "string" ? r.proofUrl : undefined,
+      reviewNote:
+        r.reviewNote === null ? null : typeof r.reviewNote === "string" ? r.reviewNote : undefined,
+      reviewedAt:
+        r.reviewedAt === null ? null : typeof r.reviewedAt === "string" ? r.reviewedAt : undefined,
+    };
+  });
+}
+
+/**
+ * Normalize `GET /subscriptions/requests` (admin review queue). Tolerates
+ * `{ data }` envelopes, raw arrays and paginated `{ data, meta }` payloads.
+ */
+export function normalizeSubscriptionRequests(raw: unknown): SubscriptionRequest[] {
+  const data = unwrap<unknown>(raw);
+  const arr = Array.isArray(data)
+    ? data
+    : Array.isArray((data as { items?: unknown })?.items)
+      ? ((data as { items: unknown[] }).items ?? [])
+      : [];
+  return arr.map((row) => {
+    const r = (row ?? {}) as Record<string, unknown>;
+    return {
+      id: String(r.id ?? ""),
+      ownerId: String(r.ownerId ?? ""),
+      ownerName: typeof r.ownerName === "string" ? r.ownerName : "Hostel Owner",
+      ownerEmail: typeof r.ownerEmail === "string" ? r.ownerEmail : null,
+      hostelId: typeof r.hostelId === "string" ? r.hostelId : null,
+      hostelName: typeof r.hostelName === "string" ? r.hostelName : null,
+      plan: toPlanId(r.plan) ?? "FREE",
+      status: (toSubStatusLoose(r.status) ?? "PENDING") as SubscriptionRequest["status"],
+      billingCycle: toBilling(r.billingCycle) ?? "MONTHLY",
+      price: typeof r.price === "number" || typeof r.price === "string" ? r.price : 0,
+      currency: typeof r.currency === "string" ? r.currency : "NPR",
+      paymentMethod:
+        typeof r.paymentMethod === "string"
+          ? (r.paymentMethod.toUpperCase() as SubscriptionRequest["paymentMethod"])
+          : null,
+      paymentReference: typeof r.paymentReference === "string" ? r.paymentReference : null,
+      notes: typeof r.notes === "string" ? r.notes : null,
+      proofUrl: typeof r.proofUrl === "string" ? r.proofUrl : null,
+      reviewNote: typeof r.reviewNote === "string" ? r.reviewNote : null,
+      reviewedBy: typeof r.reviewedBy === "string" ? r.reviewedBy : null,
+      reviewedAt: typeof r.reviewedAt === "string" ? r.reviewedAt : null,
+      startDate: typeof r.startDate === "string" ? r.startDate : undefined,
+      endDate: typeof r.endDate === "string" ? r.endDate : null,
+      createdAt: typeof r.createdAt === "string" ? r.createdAt : undefined,
+    };
+  });
+}
+
+function toSubStatusLoose(v: unknown): SubscriptionHistoryItem["status"] {
+  if (v === undefined || v === null || v === "") return undefined;
+  return String(v).toUpperCase() as SubscriptionHistoryItem["status"];
 }
 
 /** Normalize GET /expenses list (tolerates `{ data }` / raw array). */
@@ -1225,7 +1583,10 @@ export function normalizeExpensePagination(
   );
   const itemsPerPage = Math.max(
     1,
-    numOf(pickPag("itemsPerPage", "items_per_page", "limit", "perPage"), meta?.limit ?? fallbackLimit)
+    numOf(
+      pickPag("itemsPerPage", "items_per_page", "limit", "perPage"),
+      meta?.limit ?? fallbackLimit
+    )
   );
   const totalPages = Math.max(
     1,
@@ -1442,6 +1803,88 @@ export const hostelGhar = {
   analytics: {
     adminSummary: () => getWithRetry<AdminSummary>(`${PREFIX}/analytics/admin/summary`),
     ownerSummary: () => getWithRetry<OwnerSummary>(`${PREFIX}/analytics/owner/summary`),
+  },
+
+  subscriptions: {
+    /**
+     * GET /subscriptions/plans — public list (optional auth personalizes
+     * `isCurrent`; axios sends the token when present, anonymous = FREE).
+     * 200 `Subscription plans fetched successfully.`
+     */
+    plans: () =>
+      getWithRetry<BackendPlan[] | ApiEnvelope<BackendPlan[]>>(`${PREFIX}/subscriptions/plans`),
+    /**
+     * GET /subscriptions/current?hostelId=uuid — owner/admin, hostel required
+     * (explicit param or `X-Hostel-Id`). Null subscription = FREE fallback.
+     * 200 `Current subscription fetched successfully.`
+     */
+    current: (hostelId: string) =>
+      getWithRetry<SubscriptionCurrent | ApiEnvelope<SubscriptionCurrent>>(
+        `${PREFIX}/subscriptions/current`,
+        { hostelId } as unknown as ListParams
+      ),
+    /**
+     * POST /subscriptions/subscribe — owner/admin, hostel required.
+     * FREE = instant downgrade. Paid plans = payment-proof screenshot uploaded
+     * (multipart field `proof`); the row is stored as PENDING and activates
+     * only after an admin approves it. 201 with `requiresApproval: true`.
+     */
+    subscribe: (payload: SubscribePayload) => {
+      const { proof, ...rest } = payload;
+      if (!proof) {
+        return api.post(`${PREFIX}/subscriptions/subscribe`, {
+          ...rest,
+          billingCycle: rest.billingCycle ?? "MONTHLY",
+        });
+      }
+      const form = new FormData();
+      Object.entries(rest).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== "") form.append(key, String(value));
+      });
+      form.append("proof", proof, proof.name);
+      return api.post(`${PREFIX}/subscriptions/subscribe`, form, {
+        headers: { "Content-Type": undefined as unknown as string },
+      });
+    },
+    /**
+     * GET /subscriptions/requests — ADMIN ONLY review queue of owner payment
+     * proofs (defaults to PENDING). Returns `{ data, meta }` pagination.
+     */
+    requests: (params?: { status?: string; page?: number; limit?: number }) =>
+      getWithRetry<SubscriptionRequest[] | ApiEnvelope<SubscriptionRequest[]>>(
+        `${PREFIX}/subscriptions/requests`,
+        params as unknown as ListParams
+      ),
+    /**
+     * POST /subscriptions/requests/:id/review — ADMIN ONLY. APPROVE activates
+     * the plan immediately; REJECT keeps the owner on their current plan.
+     */
+    reviewRequest: (id: string, action: SubscriptionReviewAction, note?: string) =>
+      api.post(`${PREFIX}/subscriptions/requests/${id}/review`, {
+        action,
+        ...(note ? { note } : {}),
+      }),
+    /**
+     * POST /subscriptions/cancel — owner/admin, hostel required.
+     * Deactivates ACTIVE → EXPIRED; next current is FREE.
+     * 200 `Subscription cancelled successfully.` (no data).
+     */
+    cancel: (hostelId: string) => api.post(`${PREFIX}/subscriptions/cancel`, { hostelId }),
+    /** GET /subscriptions/history — owner/admin, no hostel, newest first. */
+    history: () =>
+      getWithRetry<SubscriptionHistoryItem[] | ApiEnvelope<SubscriptionHistoryItem[]>>(
+        `${PREFIX}/subscriptions/history`
+      ),
+    /**
+     * GET /subscriptions/check-limit?hostelId=uuid&count=1 — owner/admin.
+     * Always 200: `allowed` true/false (+ upgrade hint when blocked).
+     * PRO/ENTERPRISE limit null → allowed true.
+     */
+    checkLimit: (hostelId: string, count = 1) =>
+      getWithRetry<SubscriptionCheckLimit | ApiEnvelope<SubscriptionCheckLimit>>(
+        `${PREFIX}/subscriptions/check-limit`,
+        { hostelId, count } as unknown as ListParams
+      ),
   },
 
   bookings: {
@@ -1732,12 +2175,57 @@ export const hostelGhar = {
       getWithRetry<Fee[] | ApiEnvelope<Fee[]>>(`${PREFIX}/fees/hostels/${hostelId}`, params),
     /**
      * PATCH /fees/:id/payment — owner/admin records payment against a fee.
-     * Body: { amount, method, remarks? }.
+     * Sends canonical + legacy aliases so backend validation (amount vs
+     * paidAmount vs total, method vs paymentMethod/payment_method) passes:
+     * { amount, paidAmount, total, method, paymentMethod, payment_method, status }.
+     * The `Idempotency-Key` header is dropped — the backend rejects unknown
+     * headers on this route with 400.
      */
-    recordPayment: (feeId: string, payload: RecordPaymentPayload) =>
-      api.patch<Fee | ApiEnvelope<Fee>>(`${PREFIX}/fees/${feeId}/payment`, payload, {
-        headers: idemHeaders(newIdempotencyKey()),
-      }),
+    recordPayment: (feeId: string, payload: RecordPaymentPayload) => {
+      const amount = Number(payload.amount) || 0;
+      const backendMethod = toBackendPaymentMethod(payload.method);
+      const status = payload.status ? toBackendFeeStatus(payload.status) : undefined;
+      const body: Record<string, unknown> = {
+        amount,
+        paidAmount: amount,
+        paid_amount: amount,
+        total: amount,
+        totalAmount: amount,
+        method: backendMethod,
+        paymentMethod: backendMethod,
+        payment_method: backendMethod,
+      };
+      if (status) {
+        body.status = status;
+        body.feeStatus = status;
+        body.paymentStatus = status;
+        body.payment_status = status;
+      }
+      if (payload.remarks) body.remarks = payload.remarks;
+      if (payload.month) body.month = payload.month;
+      return api.patch<Fee | ApiEnvelope<Fee>>(`${PREFIX}/fees/${feeId}/payment`, body);
+    },
+    /**
+     * Manual status override — tries PATCH /fees/:id/status, then falls back
+     * to PATCH /fees/:id. Sends canonical + legacy keys for max tolerance.
+     * NULL is never sent (backend enum is PENDING|PARTIALLY_PAID|PAID|OVERDUE).
+     */
+    updateStatus: async (feeId: string, payload: UpdateFeeStatusPayload) => {
+      const status = toBackendFeeStatus(payload.status);
+      const body: Record<string, unknown> = {
+        status,
+        feeStatus: status,
+        paymentStatus: status,
+        payment_status: status,
+      };
+      try {
+        return await api.patch<Fee | ApiEnvelope<Fee>>(`${PREFIX}/fees/${feeId}/status`, body);
+      } catch (err) {
+        const code = toApiError(err).status;
+        if (code !== 404 && code !== 405) throw err;
+        return await api.patch<Fee | ApiEnvelope<Fee>>(`${PREFIX}/fees/${feeId}`, body);
+      }
+    },
     /** GET /fees/hostels/:hostelId/payment-proofs — 404 until backend ships; callers fall back to local. */
     hostelPaymentProofs: (hostelId: string, params?: ListParams) =>
       getWithRetry<unknown>(`${PREFIX}/fees/hostels/${hostelId}/payment-proofs`, params),

@@ -254,7 +254,10 @@ export interface NormalizedLeaveType extends LeaveType {
 }
 
 /* ---------------- Fees / Payments ---------------- */
-export type FeeStatus = "PAID" | "PENDING" | "OVERDUE" | "PARTIAL";
+export type FeeStatus = "PAID" | "PENDING" | "OVERDUE" | "PARTIAL" | "PARTIALLY_PAID";
+
+/** Backend canonical fee status — `PARTIAL` is stored/displayed as `PARTIALLY_PAID`. */
+export type BackendFeeStatus = "PAID" | "PENDING" | "OVERDUE" | "PARTIALLY_PAID";
 
 export type FeeType =
   "MONTHLY_HOSTEL_FEE" | "ADMISSION_FEE" | "SECURITY_DEPOSIT" | "LATE_FEE" | "MISC" | string;
@@ -314,6 +317,13 @@ export interface RecordPaymentPayload {
   method: "CASH" | "ESEWA" | "KHALTI" | "BANK";
   remarks?: string;
   month?: string;
+  /** Optional manual override — sent only when owner picks a status explicitly. */
+  status?: BackendFeeStatus | FeeStatus;
+}
+
+/** Manual status change — `PATCH /fees/:id/status` preferred, `PATCH /fees/:id` fallback. */
+export interface UpdateFeeStatusPayload {
+  status: BackendFeeStatus | FeeStatus;
 }
 
 /** Result of PATCH /fees/:id/payment. */
@@ -324,13 +334,7 @@ export interface RecordPaymentResult extends Partial<Fee> {
 /* ---------------- Expenses ---------------- */
 
 export type ExpenseCategory =
-  | "FOOD"
-  | "UTILITIES"
-  | "MAINTENANCE"
-  | "SALARIES"
-  | "SUPPLIES"
-  | "OTHER"
-  | string;
+  "FOOD" | "UTILITIES" | "MAINTENANCE" | "SALARIES" | "SUPPLIES" | "OTHER" | string;
 
 export type ExpenseStatus = "PAID" | "PENDING";
 
@@ -774,4 +778,150 @@ export interface OwnerSummary {
   availableRooms?: number;
   revenueTrend?: RevenueTrendPoint[];
   [key: string]: unknown;
+}
+
+/* ---------------- Subscriptions ---------------- */
+
+/**
+ * Backend subscription contract — `GET /subscriptions/*`.
+ * Base mount: `routes.use('/subscriptions', router)` under `/v1/hostel-ghar`.
+ * Owner routes also accept `admin`. Auth: `Authorization: Bearer <token>`
+ * or `access_token` cookie (axios sends both transports).
+ */
+export type SubscriptionPlanId = "FREE" | "BASIC" | "PRO" | "ENTERPRISE";
+
+export type SubscriptionStatus = "ACTIVE" | "EXPIRED" | "CANCELLED" | "PENDING" | "REJECTED";
+
+/** How the owner paid for a plan upgrade (screenshot proof is uploaded too). */
+export type SubscriptionPaymentMethod = "ESEWA" | "KHALTI" | "BANK" | "CASH";
+
+/** Admin action on `POST /subscriptions/requests/:id/review`. */
+export type SubscriptionReviewAction = "APPROVE" | "REJECT";
+
+export type BillingCycle = "MONTHLY" | "YEARLY";
+
+/** One tier from `GET /subscriptions/plans` (currency NPR, null = unlimited). */
+export interface BackendPlan {
+  id: SubscriptionPlanId;
+  name: string;
+  tagline?: string;
+  price?: number;
+  currency?: string;
+  billingPeriod?: string;
+  formattedPrice?: string;
+  badge?: string | null;
+  features?: string[] | { label: string; included: boolean }[];
+  buttonText?: string;
+  cta?: string;
+  limits?: {
+    residents?: number | null;
+    hostels?: number | null;
+    maxResidents?: number | null;
+    maxHostels?: number | null;
+  } | null;
+  featureFlags?: Record<string, boolean>;
+  isCurrent?: boolean;
+}
+
+/** `GET /subscriptions/current` — nullable subscription + plan + usage. */
+export interface SubscriptionCurrent {
+  subscription?: {
+    id?: string;
+    plan?: SubscriptionPlanId;
+    status?: SubscriptionStatus;
+    billingCycle?: BillingCycle;
+    price?: number | string;
+    currency?: string;
+    startDate?: string;
+    endDate?: string | null;
+    autoRenew?: boolean;
+    hostelId?: string;
+  } | null;
+  plan?: BackendPlan | null;
+  limits?: {
+    residentCount?: number;
+    residentLimit?: number | null;
+    residentLimitReached?: boolean;
+    hostelCount?: number;
+    hostelLimit?: number | null;
+    hostelLimitReached?: boolean;
+  } | null;
+  daysRemaining?: number | null;
+}
+
+/** `POST /subscriptions/subscribe` body. `hostelId` falls back to `X-Hostel-Id`. */
+export interface SubscribePayload {
+  plan: SubscriptionPlanId;
+  hostelId?: string;
+  billingCycle?: BillingCycle;
+  paymentMethod?: SubscriptionPaymentMethod;
+  paymentReference?: string;
+  notes?: string;
+  /**
+   * Payment-success screenshot. Paid plans are NOT activated immediately —
+   * the backend stores the proof and an admin approves the request.
+   */
+  proof?: File;
+}
+
+/** `GET /subscriptions/check-limit` — 200 either way, `allowed` decides. */
+export interface SubscriptionCheckLimit {
+  allowed?: boolean;
+  currentPlan?: SubscriptionPlanId;
+  planName?: string;
+  limit?: number | null;
+  currentCount?: number;
+  message?: string;
+  hint?: string;
+}
+
+/** One row of `GET /subscriptions/history` (newest first, with hostel). */
+export interface SubscriptionHistoryItem {
+  id?: string;
+  plan?: SubscriptionPlanId;
+  status?: SubscriptionStatus;
+  billingCycle?: BillingCycle;
+  price?: number | string;
+  currency?: string;
+  startDate?: string;
+  endDate?: string | null;
+  cancelledAt?: string | null;
+  hostelId?: string;
+  hostel?: { id?: string; name?: string } | null;
+  hostelName?: string;
+  createdAt?: string;
+  /** Present on rows awaiting (or that passed) admin payment review. */
+  paymentMethod?: SubscriptionPaymentMethod | null;
+  paymentReference?: string | null;
+  proofUrl?: string | null;
+  reviewNote?: string | null;
+  reviewedAt?: string | null;
+}
+
+/**
+ * One row of `GET /subscriptions/requests` — the admin review queue of owner
+ * payment-proof requests (`PENDING` by default).
+ */
+export interface SubscriptionRequest {
+  id: string;
+  ownerId: string;
+  ownerName: string;
+  ownerEmail?: string | null;
+  hostelId: string | null;
+  hostelName?: string | null;
+  plan: SubscriptionPlanId;
+  status: SubscriptionStatus;
+  billingCycle: BillingCycle;
+  price: number | string;
+  currency?: string;
+  paymentMethod?: SubscriptionPaymentMethod | null;
+  paymentReference?: string | null;
+  notes?: string | null;
+  proofUrl?: string | null;
+  reviewNote?: string | null;
+  reviewedBy?: string | null;
+  reviewedAt?: string | null;
+  startDate?: string;
+  endDate?: string | null;
+  createdAt?: string;
 }

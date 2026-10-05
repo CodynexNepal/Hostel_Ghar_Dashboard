@@ -147,10 +147,7 @@ export default function ResidentLeavesPage() {
     <DashboardShell title="My Leaves" subtitle={room.hostelName}>
       <div className="space-y-6">
         <Card>
-          <CardHeader
-            title="Apply for Leave"
-            subtitle={`Policies for ${room.hostelName}`}
-          />
+          <CardHeader title="Apply for Leave" subtitle={`Policies for ${room.hostelName}`} />
           <form className="grid grid-cols-1 gap-3 p-5 sm:grid-cols-3" onSubmit={submit}>
             <Input
               label="From"
@@ -209,10 +206,7 @@ export default function ResidentLeavesPage() {
         </Card>
 
         <Card>
-          <CardHeader
-            title="My Leave Requests"
-            subtitle="Your submitted leave requests"
-          />
+          <CardHeader title="My Leave Requests" subtitle="Your submitted leave requests" />
           <div className="p-5">
             {isLoading && <Skeleton className="h-4 w-40" />}
             {!isLoading && error && (

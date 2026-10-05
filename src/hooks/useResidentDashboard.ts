@@ -70,7 +70,8 @@ export function normalizeResidentRoom(raw: unknown): ResidentRoomRow {
     })(),
     phone: str(pick("phone", "phoneNumber"), "") || undefined,
     joinedDate: str(pick("joinedDate", "joined_date"), "") || undefined,
-    imageUrl: (pick("imageUrl", "image_url", "avatarUrl", "photoUrl") as string | null | undefined) ?? null,
+    imageUrl:
+      (pick("imageUrl", "image_url", "avatarUrl", "photoUrl") as string | null | undefined) ?? null,
     fee: pick("fee"),
   };
 }
@@ -208,7 +209,12 @@ export function normalizeLeaveType(raw: unknown): NormalizedLeaveType {
   const activeRaw = pick("isActive", "is_active", "active", "isEnabled", "enabled");
   const isActive = boolOf(activeRaw);
   const requiresParentApproval = boolOf(
-    pick("requiresParentApproval", "requires_parent_approval", "parentApproval", "needsParentApproval")
+    pick(
+      "requiresParentApproval",
+      "requires_parent_approval",
+      "parentApproval",
+      "needsParentApproval"
+    )
   );
   const createdAt = pick("createdAt", "created_at") as string | undefined;
   const updatedAt = pick("updatedAt", "updated_at") as string | undefined;
@@ -276,8 +282,7 @@ export function useMyResidence(hostelId?: string | null) {
           (rr) =>
             (user?.id && rr.id === user.id) ||
             (user?.email && rr.email.toLowerCase() === user.email.toLowerCase())
-        ) ??
-        (rows.length === 1 ? rows[0] : null);
+        ) ?? (rows.length === 1 ? rows[0] : null);
       setState({ data: mine, error: null, isLoading: false, forbidden: false });
       return mine;
     } catch (err) {
@@ -307,8 +312,7 @@ export function useMyFees() {
       // (NOT { data: [...] }) — pick up `fees` too via toPaginated.
       const items = toPaginated<Fee>(res.data).items;
       const raw = (res.data ?? {}) as { totalPendingDue?: unknown };
-      const pending =
-        raw.totalPendingDue !== undefined ? Number(raw.totalPendingDue) : null;
+      const pending = raw.totalPendingDue !== undefined ? Number(raw.totalPendingDue) : null;
       setTotalPendingDue(Number.isFinite(pending as number) ? (pending as number) : null);
       setState({ data: items, error: null, isLoading: false });
       return items;

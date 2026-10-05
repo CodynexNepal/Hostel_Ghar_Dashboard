@@ -1,113 +1,236 @@
 "use client";
+
 import Link from "next/link";
+import {
+  BarChart3,
+  BedDouble,
+  Building2,
+  CreditCard,
+  Crown,
+  LayoutDashboard,
+  RefreshCw,
+  Settings,
+  TriangleAlert,
+  Users,
+  Wallet,
+} from "lucide-react";
 import { DashboardShell } from "@/components/layout/DashboardShell";
-import { Card, CardHeader } from "@/components/ui/Card";
-import { Badge } from "@/components/ui/Badge";
+import { Protected } from "@/components/common/Protected";
 import { Button } from "@/components/ui/Button";
-import { RoleSwitcher } from "@/components/common/RoleSwitcher";
-import { useApi } from "@/hooks/useApi";
-import { hostelGhar, toPaginated, unwrap } from "@/lib/hostelGhar";
-import type { AdminSummary } from "@/lib/api-types";
-import type { Hostel } from "@/types/hostel";
+import { Card, CardHeader } from "@/components/ui/Card";
+import { useAdminDashboard } from "@/hooks/useAdminDashboard";
+import { AdminKpiCards, type AdminKpi } from "@/components/admin/AdminKpiCards";
+import { AdminActionsGrid, type AdminAction } from "@/components/admin/AdminActionsGrid";
+import { AdminHostelsSpotlight } from "@/components/admin/AdminHostelsSpotlight";
+import { AdminApprovalsQueue } from "@/components/admin/AdminApprovalsQueue";
 import { formatCurrency } from "@/lib/utils";
-import { Skeleton } from "@/components/ui/Skeleton";
-import { ErrorState } from "@/components/ui/EmptyState";
+
+function num(v: unknown): number | null {
+  const n = typeof v === "string" ? Number(v) : typeof v === "number" ? v : NaN;
+  return Number.isFinite(n) ? n : null;
+}
 
 export default function SuperAdminPage() {
-  const {
-    data: summary,
-    error,
-    isLoading,
-    refetch,
-  } = useApi(async () => {
-    const res = await hostelGhar.analytics.adminSummary();
-    return unwrap<AdminSummary>(res.data);
-  }, []);
-  const { data: hostels } = useApi(async () => {
-    try {
-      const res = await hostelGhar.admin.listHostels({ limit: 5 });
-      return toPaginated<Hostel>(res.data).items;
-    } catch {
-      return [] as Hostel[];
-    }
-  }, []);
+  const dash = useAdminDashboard();
+  const { summary, isLoading, isRefetching, refetch, isLive, summaryError } = dash;
 
-  const stats: [string, string, string][] = [
-    ["Total Hostels", String(summary?.totalHostels ?? "—"), "platform-wide"],
-    ["Total Residents", String(summary?.totalResidents ?? "—"), "all hostels"],
-    ["MRR", formatCurrency(Number(summary?.mrr ?? summary?.monthlyRevenue ?? 0)), "recurring"],
-    ["Active Plans", String(summary?.activePlans ?? "—"), "paid plans"],
+  const totalHostels = num(summary?.totalHostels) ?? dash.hostels.length ?? null;
+  const totalResidents = num(summary?.totalResidents);
+  const mrr = num(summary?.mrr ?? summary?.monthlyRevenue) ?? 0;
+  const activePlans = summary?.activePlans != null ? String(summary.activePlans) : null;
+  const occupancy = num(summary?.occupancyRate);
+
+  const kpis: AdminKpi[] = [
+    {
+      label: "Total Hostels",
+      value: totalHostels != null ? String(totalHostels) : "—",
+      hint: "platform-wide",
+      icon: Building2,
+      accent: "bg-brand",
+    },
+    {
+      label: "Total Residents",
+      value: totalResidents != null ? totalResidents.toLocaleString("en-NP") : "—",
+      hint: "all hostels",
+      icon: Users,
+      accent: "bg-blue-500",
+    },
+    {
+      label: "MRR",
+      value: formatCurrency(mrr),
+      hint: activePlans ? `${activePlans} paid plans` : "recurring revenue",
+      icon: Wallet,
+      accent: "bg-emerald-500",
+    },
+    {
+      label: "Occupancy",
+      value: occupancy != null ? `${occupancy}%` : "—",
+      hint: "beds occupied",
+      icon: BarChart3,
+      accent: "bg-violet-500",
+    },
+  ];
+
+  const pendingN = dash.pendingTotal ?? dash.pendingApprovals.length;
+
+  const actions: AdminAction[] = [
+    {
+      label: "Hostels",
+      desc: "Create, assign owners, suspend",
+      href: "/admin/hostels",
+      icon: Building2,
+      accent: "bg-brand-ink",
+    },
+    {
+      label: "Owners",
+      desc: "Onboard owners with photo",
+      href: "/admin/owners",
+      icon: Users,
+      accent: "bg-blue-600",
+    },
+    {
+      label: "Residents",
+      desc: "Platform resident directory",
+      href: "/admin/residents",
+      icon: BedDouble,
+      accent: "bg-violet-600",
+    },
+    {
+      label: "Subscriptions",
+      desc: "Approve payments, plans",
+      href: "/admin/subscriptions",
+      icon: Crown,
+      accent: "bg-amber-500",
+      badge: pendingN > 0 ? String(pendingN) : undefined,
+      badgeTone: "amber",
+    },
+    {
+      label: "Payments",
+      desc: "Receipts & fee ledger",
+      href: "/admin/payments",
+      icon: CreditCard,
+      accent: "bg-emerald-600",
+    },
+    {
+      label: "Analytics",
+      desc: "Growth, churn, collection",
+      href: "/admin/analytics",
+      icon: BarChart3,
+      accent: "bg-indigo-600",
+    },
+    {
+      label: "Platform QRs",
+      desc: "Hostel Ghar payment QRs",
+      href: "/admin/settings",
+      icon: Wallet,
+      accent: "bg-teal-600",
+    },
+    {
+      label: "Settings",
+      desc: "Platform configuration",
+      href: "/admin/settings",
+      icon: Settings,
+      accent: "bg-neutral-700",
+    },
   ];
 
   return (
     <DashboardShell title="Platform Overview" subtitle="All hostels, owners, revenue and health.">
-      <div className="space-y-5">
-        <RoleSwitcher />
-        {isLoading ? (
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {[0, 1, 2, 3].map((i) => (
-              <Card key={i} className="space-y-2 p-5">
-                <Skeleton className="h-4 w-24" />
-                <Skeleton className="h-8 w-20" />
-              </Card>
-            ))}
+      <Protected roles={["SUPER_ADMIN"]} redirectTo="/dashboard">
+        <div className="space-y-4 sm:space-y-5">
+          {!isLoading && !isLive && (
+            <div className="flex flex-col gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 sm:flex-row sm:items-center sm:justify-between">
+              <p className="flex items-center gap-2">
+                <TriangleAlert className="h-4 w-4 shrink-0" aria-hidden />
+                Backend unreachable — showing empty state. {summaryError ?? ""}
+              </p>
+              <Button size="sm" variant="outline" onClick={refetch} className="shrink-0">
+                <RefreshCw className="h-3.5 w-3.5" /> Retry
+              </Button>
+            </div>
+          )}
+          <div className="flex items-center justify-between gap-2">
+            <p className="flex items-center gap-1.5 text-xs text-neutral-500">
+              <LayoutDashboard className="h-3.5 w-3.5" aria-hidden />
+              {isRefetching ? "Refreshing…" : isLive ? "Live from backend" : "Waiting for backend"}
+              <span
+                className={`inline-block h-1.5 w-1.5 rounded-full ${isLive ? "bg-emerald-500" : "bg-amber-400"}`}
+                aria-hidden
+              />
+            </p>
+            <Button size="sm" variant="ghost" onClick={refetch} className="text-xs">
+              <RefreshCw className="h-3.5 w-3.5" /> Refresh
+            </Button>
           </div>
-        ) : error ? (
-          <ErrorState
-            title="Couldn't load platform stats"
-            description={error.message}
-            onRetry={refetch}
-          />
-        ) : (
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {stats.map(([t, v, h]) => (
-              <Card key={t} className="p-5">
-                <p className="text-[13px] text-neutral-500">{t}</p>
-                <p className="mt-1 text-2xl font-bold">{v}</p>
-                <p className="mt-0.5 text-xs text-neutral-400">{h}</p>
-              </Card>
-            ))}
+          <AdminKpiCards kpis={kpis} isLoading={isLoading} />
+          <section aria-label="Admin actions">
+            <h2 className="mb-2 text-sm font-semibold text-neutral-900">Manage everything</h2>
+            <AdminActionsGrid actions={actions} isLoading={isLoading} />
+          </section>
+          <div className="grid gap-4 xl:grid-cols-2">
+            <AdminApprovalsQueue
+              rows={dash.pendingApprovals}
+              total={dash.pendingTotal}
+              isLoading={isLoading}
+              error={dash.approvalsError}
+              onRetry={refetch}
+            />
+            <AdminHostelsSpotlight
+              hostels={dash.hostels}
+              isLoading={isLoading}
+              error={dash.hostelsError}
+              onRetry={refetch}
+            />
           </div>
-        )}
-        <Card>
-          <CardHeader
-            title="Hostels"
-            subtitle="Every hostel on the platform"
-            action={
-              <Link href="/admin/hostels">
-                <Button size="sm">Manage hostels</Button>
-              </Link>
-            }
-          />
-          <div className="divide-y divide-neutral-100">
-            {(hostels ?? []).length === 0 ? (
-              <p className="px-5 py-6 text-sm text-neutral-500">No hostels synced yet.</p>
-            ) : (
-              (hostels ?? []).map((h) => (
-                <div
-                  key={h.id}
-                  className="flex flex-col gap-2 px-5 py-3.5 sm:flex-row sm:items-center"
-                >
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-semibold">{h.name}</span>
-                    <span className="block text-xs text-neutral-500">
-                      {h.city} · {h.ownerName} · {h.occupiedBeds}/{h.totalBeds} beds
-                    </span>
-                  </span>
-                  <span className="flex items-center gap-2">
-                    <Badge tone={h.status === "ACTIVE" ? "green" : "amber"}>{h.status}</Badge>
-                    <Link href="/admin/hostels">
-                      <Button size="sm" variant="outline">
-                        View
-                      </Button>
-                    </Link>
-                  </span>
+          <Card>
+            <CardHeader
+              title="Platform health"
+              subtitle="Revenue, occupancy and collection at a glance"
+            />
+            <div className="grid gap-3 p-4 sm:grid-cols-3 sm:p-5">
+              {[
+                {
+                  t: "Monthly revenue",
+                  v: formatCurrency(num(summary?.monthlyRevenue ?? summary?.mrr) ?? 0),
+                },
+                { t: "Total revenue", v: formatCurrency(num(summary?.totalRevenue) ?? 0) },
+                { t: "Pending dues", v: formatCurrency(num(summary?.pendingAmount) ?? 0) },
+                { t: "Rooms", v: summary?.totalRooms != null ? String(summary.totalRooms) : "—" },
+                {
+                  t: "Beds occupied",
+                  v:
+                    summary?.occupiedBeds != null
+                      ? `${summary.occupiedBeds}${summary?.totalBeds ? ` / ${summary.totalBeds}` : ""}`
+                      : "—",
+                },
+                { t: "Active plans", v: activePlans ?? "—" },
+              ].map((s) => (
+                <div key={s.t} className="rounded-lg bg-surface-muted px-3.5 py-3">
+                  <p className="text-xs text-neutral-500">{s.t}</p>
+                  <p className="mt-0.5 truncate text-base font-bold text-neutral-900" title={s.v}>
+                    {s.v}
+                  </p>
                 </div>
-              ))
-            )}
-          </div>
-        </Card>
-      </div>
+              ))}
+            </div>
+            <div className="flex flex-wrap gap-2 border-t border-surface-border px-4 py-3 sm:px-5">
+              <Link href="/admin/subscriptions">
+                <Button size="sm">Approve payments</Button>
+              </Link>
+              <Link href="/admin/hostels">
+                <Button size="sm" variant="outline">
+                  Add hostel
+                </Button>
+              </Link>
+              <Link href="/admin/owners">
+                <Button size="sm" variant="outline">
+                  Add owner
+                </Button>
+              </Link>
+            </div>
+          </Card>
+        </div>
+      </Protected>
     </DashboardShell>
   );
 }

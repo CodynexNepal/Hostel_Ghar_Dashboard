@@ -37,23 +37,19 @@ export function backendQrToMaps(records: BackendPaymentQr[]): {
   const qrs: QrMap = {};
   const labels: LabelMap = {};
   for (const rec of records) {
-    const method = normalizeQrMethod(
-      rec.paymentMethod ?? rec.method ?? rec.tag ?? rec.provider
-    );
+    const method = normalizeQrMethod(rec.paymentMethod ?? rec.method ?? rec.tag ?? rec.provider);
     if (!method) continue;
-    const src = String(
-      rec.qrCodeUrl ?? rec.imageUrl ?? rec.qrUrl ?? rec.image ?? rec.url ?? ""
-    );
+    const src = String(rec.qrCodeUrl ?? rec.imageUrl ?? rec.qrUrl ?? rec.image ?? rec.url ?? "");
     const label = String(
       rec.label ??
         rec.accountLabel ??
-        [rec.accountName, rec.accountIdentifier].filter(Boolean).join(
-          rec.accountName && rec.accountIdentifier ? " • " : ""
-        ) ??
+        [rec.accountName, rec.accountIdentifier]
+          .filter(Boolean)
+          .join(rec.accountName && rec.accountIdentifier ? " • " : "") ??
         ""
     );
     // Inactive rows stay hidden from residents (owner still sees them via records).
-    const active = rec.isActive ?? (String(rec.status ?? "ACTIVE").toUpperCase() === "ACTIVE");
+    const active = rec.isActive ?? String(rec.status ?? "ACTIVE").toUpperCase() === "ACTIVE";
     if (!active) continue;
     if (src && !qrs[method]) qrs[method] = src;
     if (label && !labels[method]) labels[method] = label;
@@ -169,11 +165,7 @@ export function loadPaymentQrs(hostelId?: string | null): {
 }
 
 /** Persist owner's QRs for one hostel. Values are data-URLs (compressed uploads). */
-export function savePaymentQrs(
-  hostelId: string,
-  qrs: QrMap,
-  labels: LabelMap
-): void {
+export function savePaymentQrs(hostelId: string, qrs: QrMap, labels: LabelMap): void {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(key(hostelId), JSON.stringify(qrs));
@@ -220,7 +212,9 @@ export function usePaymentQrs(
       // Postgres uuid and throws on "default"/junk. When omitted it resolves
       // the hostel from auth context / the X-Hostel-Id header, which axios
       // already sends from the `hg_hostel_id` cookie on every request.
-      const params = validHostelId(hostelId) ? { hostelId: validHostelId(hostelId) as string } : undefined;
+      const params = validHostelId(hostelId)
+        ? { hostelId: validHostelId(hostelId) as string }
+        : undefined;
       const res =
         mode === "preview"
           ? await hostelGhar.paymentQrs.preview(params)
@@ -305,7 +299,11 @@ export function useOwnerPaymentQrs(hostelId?: string | null) {
     },
     getById: (id: string) =>
       hostelGhar.paymentQrs.detail(id).then((r) => normalizePaymentQr(unwrap<unknown>(r.data))),
-    createQr: (payload: Omit<import("./api-types").CreatePaymentQrPayload, "hostelId"> & { hostelId?: string }) =>
+    createQr: (
+      payload: Omit<import("./api-types").CreatePaymentQrPayload, "hostelId"> & {
+        hostelId?: string;
+      }
+    ) =>
       run(() => {
         const hid = validHostelId(payload.hostelId ?? hostelId);
         return hostelGhar.paymentQrs.create({

@@ -56,7 +56,13 @@ export function CreateInvoiceModal({
             <label htmlFor="invoice-billing-month" className={labelClass}>
               Billing month <span className="text-red-600">*</span>
             </label>
-            <input id="invoice-billing-month" name="billingMonth" type="month" required className={fieldClass} />
+            <input
+              id="invoice-billing-month"
+              name="billingMonth"
+              type="month"
+              required
+              className={fieldClass}
+            />
           </div>
           <Input
             label="Amount"
@@ -74,7 +80,13 @@ export function CreateInvoiceModal({
             <label htmlFor="invoice-due-date" className={labelClass}>
               Due date <span className="text-red-600">*</span>
             </label>
-            <input id="invoice-due-date" name="dueDate" type="date" required className={fieldClass} />
+            <input
+              id="invoice-due-date"
+              name="dueDate"
+              type="date"
+              required
+              className={fieldClass}
+            />
           </div>
           <div>
             <label htmlFor="invoice-status" className={labelClass}>

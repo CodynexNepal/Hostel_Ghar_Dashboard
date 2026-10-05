@@ -18,7 +18,7 @@ export function SidebarNavList({
   collapsed: boolean;
   onNavigate: () => void;
 }) {
-  const { canAccess } = usePermissions();
+  const { canAccess, isPlanLoading } = usePermissions();
   const { openUpgrade } = useUpgrade();
   const pathname = usePathname() ?? "/";
   const [manual, setManual] = useState<Record<string, boolean>>({});
@@ -37,7 +37,8 @@ export function SidebarNavList({
     <ul className="space-y-1">
       {nav.map((item) => {
         const Icon = item.icon;
-        const allowed = canAccess(item.permission);
+        // While live plan resolves, assume allowed — never flash locks.
+        const allowed = isPlanLoading ? true : canAccess(item.permission);
         const hasKids = Boolean(item.children?.length);
         const active = item.href
           ? isActivePath(pathname, item.href)
@@ -80,7 +81,7 @@ export function SidebarNavList({
               {!collapsed && open && (
                 <ul className="ml-5 mt-1 animate-[fade-slide-in_180ms_ease-out] space-y-0.5 border-l border-white/10 pl-3">
                   {item.children!.map((child) => {
-                    const ok = canAccess(child.permission);
+                    const ok = isPlanLoading ? true : canAccess(child.permission);
                     if (!ok)
                       return (
                         <li key={child.label}>

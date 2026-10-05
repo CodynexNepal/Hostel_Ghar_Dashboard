@@ -7,7 +7,10 @@ import { Badge, statusTone } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { formatCurrency } from "@/lib/utils";
 import { useToast } from "@/hooks/useToast";
-import { CreateInvoiceModal, type NewInvoicePayload } from "@/components/finance/CreateInvoiceModal";
+import {
+  CreateInvoiceModal,
+  type NewInvoicePayload,
+} from "@/components/finance/CreateInvoiceModal";
 
 interface InvoiceRow {
   id: string;

@@ -31,7 +31,6 @@ export function BrandMark({ collapsed = false }: { collapsed?: boolean }) {
       {!collapsed && (
         <span className="sidebar-label whitespace-nowrap">
           <span className="block text-[15px] font-bold leading-tight text-white">Hostel Ghar</span>
-         
         </span>
       )}
     </span>

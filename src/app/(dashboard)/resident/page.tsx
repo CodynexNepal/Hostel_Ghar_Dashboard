@@ -209,7 +209,7 @@ export default function ResidentDashboardPage() {
               </div>
               {due && (
                 <Link href="/resident/payments">
-                  <Button size="sm" variant="outline" className="gap-1.5 shrink-0 text-xs">
+                  <Button size="sm" variant="outline" className="shrink-0 gap-1.5 text-xs">
                     <QrCode className="h-3.5 w-3.5 text-brand-ink" /> View QR Code
                   </Button>
                 </Link>

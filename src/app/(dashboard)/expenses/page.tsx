@@ -27,7 +27,10 @@ import type {
   ExpenseListParams,
   ExpensePagination,
 } from "@/lib/api-types";
-import { CreateExpenseModal, type NewExpensePayload } from "@/components/finance/CreateExpenseModal";
+import {
+  CreateExpenseModal,
+  type NewExpensePayload,
+} from "@/components/finance/CreateExpenseModal";
 
 const PAGE_SIZE = 20;
 
@@ -260,7 +263,10 @@ export default function ExpensesPage() {
       <Protected permission="MANAGE_EXPENSES" redirectTo="/dashboard">
         <div className="mb-4 grid gap-3 rounded-card border border-surface-border bg-white p-4 sm:grid-cols-2 lg:grid-cols-5">
           <div className="lg:col-span-2">
-            <label htmlFor="expense-filter-category" className="mb-1 block text-xs text-neutral-500">
+            <label
+              htmlFor="expense-filter-category"
+              className="mb-1 block text-xs text-neutral-500"
+            >
               Category
             </label>
             <select
@@ -328,12 +334,17 @@ export default function ExpensesPage() {
           </div>
           <div className="rounded-card border border-surface-border bg-white p-4">
             <p className="text-xs text-neutral-500">Pending</p>
-            <p className="mt-1 text-lg font-bold text-amber-700">{formatCurrency(totals.pending)}</p>
+            <p className="mt-1 text-lg font-bold text-amber-700">
+              {formatCurrency(totals.pending)}
+            </p>
           </div>
         </div>
 
         {!hostelId && !isAdmin && (
-          <p role="status" className="mb-4 rounded-md bg-amber-50 px-3 py-2 text-[13px] text-amber-800">
+          <p
+            role="status"
+            className="mb-4 rounded-md bg-amber-50 px-3 py-2 text-[13px] text-amber-800"
+          >
             No hostel linked — connect this account to a hostel to load its expenses.
           </p>
         )}

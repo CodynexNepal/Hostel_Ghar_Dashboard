@@ -20,7 +20,6 @@ import { RecentPayments } from "@/components/dashboard/RecentPayments";
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
 import { CardSkeleton } from "@/components/ui/Skeleton";
-import { RoleSwitcher } from "@/components/common/RoleSwitcher";
 import { formatCurrency } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { useApi } from "@/hooks/useApi";
@@ -157,7 +156,6 @@ export default function OwnerDashboardPage() {
     >
       <Protected permission="VIEW_DASHBOARD">
         <div className="space-y-5">
-          <RoleSwitcher />
           {hostels.length > 1 && (
             <Card className="p-4">
               <div className="mb-3 flex items-center gap-2">

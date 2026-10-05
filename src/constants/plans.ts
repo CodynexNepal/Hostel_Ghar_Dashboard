@@ -1,5 +1,10 @@
 import type { Plan } from "@/types/subscription";
 
+/**
+ * Mirrors `src/constant/subscription.constant.ts` on the backend (NPR).
+ * null residentLimit = unlimited. Feature order + inclusion match the
+ * backend plan definitions so the UI never contradicts GET /plans.
+ */
 export const PLANS: Plan[] = [
   {
     id: "FREE",
@@ -13,9 +18,9 @@ export const PLANS: Plan[] = [
       { label: "Basic dashboard", included: true },
       { label: "Basic hostel profile", included: true },
       { label: "Up to 10 residents", included: true },
-      { label: "Room management", included: false },
-      { label: "Staff management", included: false },
-      { label: "Reports & analytics", included: false },
+      { label: "Room management", included: true },
+      { label: "Staff management", included: true },
+      { label: "Reports and analytics", included: true },
     ],
   },
   {
@@ -31,7 +36,7 @@ export const PLANS: Plan[] = [
       { label: "Room management", included: true },
       { label: "Basic payments", included: true },
       { label: "Expenses tracking", included: true },
-      { label: "Reports & analytics", included: false },
+      { label: "Reports and analytics", included: true },
     ],
   },
   {
@@ -47,8 +52,8 @@ export const PLANS: Plan[] = [
       { label: "Unlimited residents", included: true },
       { label: "Staff management", included: true },
       { label: "Advanced analytics", included: true },
-      { label: "Reports & exports", included: true },
-      { label: "Invoices & reminders", included: true },
+      { label: "Reports and exports", included: true },
+      { label: "Invoices and reminders", included: true },
     ],
   },
   {

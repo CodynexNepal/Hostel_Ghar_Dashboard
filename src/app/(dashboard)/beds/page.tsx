@@ -29,10 +29,42 @@ interface BedRow {
 }
 
 const INITIAL_BEDS: BedRow[] = [
-  { id: "bed-1", roomNumber: "A-101", bedNumber: "B1", roomType: "DOUBLE", residentName: "Aashish Shah", monthlyRent: 9000, status: "OCCUPIED" },
-  { id: "bed-2", roomNumber: "A-101", bedNumber: "B2", roomType: "DOUBLE", residentName: "Suman Gurung", monthlyRent: 9000, status: "OCCUPIED" },
-  { id: "bed-3", roomNumber: "A-102", bedNumber: "C1", roomType: "DOUBLE", residentName: "Available", monthlyRent: 9500, status: "AVAILABLE" },
-  { id: "bed-4", roomNumber: "A-102", bedNumber: "C2", roomType: "DOUBLE", residentName: "Under repair", monthlyRent: 9500, status: "MAINTENANCE" },
+  {
+    id: "bed-1",
+    roomNumber: "A-101",
+    bedNumber: "B1",
+    roomType: "DOUBLE",
+    residentName: "Aashish Shah",
+    monthlyRent: 9000,
+    status: "OCCUPIED",
+  },
+  {
+    id: "bed-2",
+    roomNumber: "A-101",
+    bedNumber: "B2",
+    roomType: "DOUBLE",
+    residentName: "Suman Gurung",
+    monthlyRent: 9000,
+    status: "OCCUPIED",
+  },
+  {
+    id: "bed-3",
+    roomNumber: "A-102",
+    bedNumber: "C1",
+    roomType: "DOUBLE",
+    residentName: "Available",
+    monthlyRent: 9500,
+    status: "AVAILABLE",
+  },
+  {
+    id: "bed-4",
+    roomNumber: "A-102",
+    bedNumber: "C2",
+    roomType: "DOUBLE",
+    residentName: "Under repair",
+    monthlyRent: 9500,
+    status: "MAINTENANCE",
+  },
 ];
 
 function normalizeBed(raw: Bed, roomRentFallback?: number, roomTypeFallback?: string): BedRow {
@@ -44,7 +76,8 @@ function normalizeBed(raw: Bed, roomRentFallback?: number, roomTypeFallback?: st
     })
     .filter((value): value is number => value !== null);
 
-  const monthlyRent = rentCandidates.length > 0 ? Math.max(...rentCandidates.filter((x) => x > 0), 0) : 0;
+  const monthlyRent =
+    rentCandidates.length > 0 ? Math.max(...rentCandidates.filter((x) => x > 0), 0) : 0;
   const roomType = String(raw.type ?? raw.roomType ?? roomTypeFallback ?? "DOUBLE").toUpperCase();
 
   return {
@@ -91,7 +124,12 @@ export default function BedsPage() {
     [roomOptionsData]
   );
 
-  const { data: bedsApi, error, isLoading, retry } = useApi(async () => {
+  const {
+    data: bedsApi,
+    error,
+    isLoading,
+    retry,
+  } = useApi(async () => {
     if (!hostelId) return INITIAL_BEDS;
     const res = await hostelGhar.beds.list({
       hostelId,
@@ -264,7 +302,10 @@ export default function BedsPage() {
   ];
 
   return (
-    <DashboardShell title="Beds" subtitle="Hostel Ghar / Hostel / Beds — room inventory and bed availability.">
+    <DashboardShell
+      title="Beds"
+      subtitle="Hostel Ghar / Hostel / Beds — room inventory and bed availability."
+    >
       <Protected permission="MANAGE_ROOMS" redirectTo="/dashboard">
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex gap-2">
@@ -299,7 +340,10 @@ export default function BedsPage() {
 
         {error && (
           <div className="mb-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-            Couldn&apos;t load beds from the server. Showing the cached list. <button className="font-semibold underline" onClick={() => void retry()}>Retry</button>
+            Couldn&apos;t load beds from the server. Showing the cached list.{" "}
+            <button className="font-semibold underline" onClick={() => void retry()}>
+              Retry
+            </button>
           </div>
         )}
 
@@ -313,7 +357,10 @@ export default function BedsPage() {
           <Card className="mb-4 p-5">
             <form onSubmit={handleSubmit} className="grid gap-4 sm:grid-cols-6" noValidate>
               <div>
-                <label htmlFor="flat-select" className="mb-1.5 block text-[13px] font-medium text-neutral-800">
+                <label
+                  htmlFor="flat-select"
+                  className="mb-1.5 block text-[13px] font-medium text-neutral-800"
+                >
                   Flat
                 </label>
                 <select
@@ -338,7 +385,10 @@ export default function BedsPage() {
                 </select>
               </div>
               <div>
-                <label htmlFor="room-select" className="mb-1.5 block text-[13px] font-medium text-neutral-800">
+                <label
+                  htmlFor="room-select"
+                  className="mb-1.5 block text-[13px] font-medium text-neutral-800"
+                >
                   Select room <span className="text-red-600">*</span>
                 </label>
                 <select
@@ -363,7 +413,8 @@ export default function BedsPage() {
                   </option>
                   {filteredRoomOptions.map((room) => (
                     <option key={room.id} value={room.roomNumber}>
-                      {room.roomNumber} · {room.occupied}/{room.capacity} beds · {formatCurrency(room.monthlyRent)}
+                      {room.roomNumber} · {room.occupied}/{room.capacity} beds ·{" "}
+                      {formatCurrency(room.monthlyRent)}
                     </option>
                   ))}
                 </select>
@@ -384,7 +435,10 @@ export default function BedsPage() {
                 onChange={(e) => handleChange("monthlyRent", e.target.value)}
               />
               <div>
-                <label htmlFor="bed-status" className="mb-1.5 block text-[13px] font-medium text-neutral-800">
+                <label
+                  htmlFor="bed-status"
+                  className="mb-1.5 block text-[13px] font-medium text-neutral-800"
+                >
                   Status
                 </label>
                 <select
@@ -403,7 +457,9 @@ export default function BedsPage() {
                 <Button variant="outline" type="button" onClick={() => setOpen(false)}>
                   Cancel
                 </Button>
-                <Button type="submit" loading={isCreating}>Save Bed</Button>
+                <Button type="submit" loading={isCreating}>
+                  Save Bed
+                </Button>
               </div>
             </form>
           </Card>
@@ -418,7 +474,9 @@ export default function BedsPage() {
           mobileCard={(b) => (
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="font-semibold">{b.roomNumber} · {b.bedNumber}</p>
+                <p className="font-semibold">
+                  {b.roomNumber} · {b.bedNumber}
+                </p>
                 <p className="text-xs text-neutral-500">{b.residentName}</p>
               </div>
               <Badge tone={statusTone(b.status)}>{b.status}</Badge>

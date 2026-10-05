@@ -128,7 +128,7 @@ export function PaymentQrDialog({
                       : "border-neutral-200 bg-white text-neutral-700 hover:border-neutral-300 hover:bg-neutral-50"
                   }`}
                 >
-                  <div className="flex items-center gap-1.5 font-bold text-xs">
+                  <div className="flex items-center gap-1.5 text-xs font-bold">
                     <span
                       className={`flex h-5 w-5 items-center justify-center rounded-full text-[11px] ${
                         isSelected ? "text-brand" : "text-neutral-500 group-hover:text-neutral-900"
@@ -140,7 +140,11 @@ export function PaymentQrDialog({
                   </div>
                   <span
                     className={`mt-1 text-[10px] ${
-                      isSelected ? "text-neutral-300" : hasQr ? "text-emerald-600 font-medium" : "text-neutral-400"
+                      isSelected
+                        ? "text-neutral-300"
+                        : hasQr
+                          ? "font-medium text-emerald-600"
+                          : "text-neutral-400"
                     }`}
                   >
                     {hasQr ? "QR Available" : "QR Setup"}
@@ -165,43 +169,41 @@ export function PaymentQrDialog({
                 />
                 {/* Corner guide accents */}
                 <div
-                  className="absolute left-2 top-2 h-4 w-4 border-l-2 border-t-2 rounded-tl-sm"
+                  className="absolute left-2 top-2 h-4 w-4 rounded-tl-sm border-l-2 border-t-2"
                   style={{ borderColor: currentMeta.brandColor }}
                 />
                 <div
-                  className="absolute right-2 top-2 h-4 w-4 border-r-2 border-t-2 rounded-tr-sm"
+                  className="absolute right-2 top-2 h-4 w-4 rounded-tr-sm border-r-2 border-t-2"
                   style={{ borderColor: currentMeta.brandColor }}
                 />
                 <div
-                  className="absolute bottom-2 left-2 h-4 w-4 border-b-2 border-l-2 rounded-bl-sm"
+                  className="absolute bottom-2 left-2 h-4 w-4 rounded-bl-sm border-b-2 border-l-2"
                   style={{ borderColor: currentMeta.brandColor }}
                 />
                 <div
-                  className="absolute bottom-2 right-2 h-4 w-4 border-b-2 border-r-2 rounded-br-sm"
+                  className="absolute bottom-2 right-2 h-4 w-4 rounded-br-sm border-b-2 border-r-2"
                   style={{ borderColor: currentMeta.brandColor }}
                 />
               </div>
 
               {/* Account Details Box */}
-              <div className="mt-3.5 flex w-full max-w-sm items-center justify-between rounded-xl border border-neutral-200 bg-white px-3 py-2 text-left shadow-xs">
+              <div className="shadow-xs mt-3.5 flex w-full max-w-sm items-center justify-between rounded-xl border border-neutral-200 bg-white px-3 py-2 text-left">
                 <div className="min-w-0 pr-2">
                   <p className="text-[11px] font-medium text-neutral-400">
                     {selectedMethod === "BANK" ? "Bank / A/C Info" : `${currentMeta.label} Account`}
                   </p>
-                  <p className="truncate text-xs font-semibold text-neutral-800">
-                    {accountLabel}
-                  </p>
+                  <p className="truncate text-xs font-semibold text-neutral-800">{accountLabel}</p>
                 </div>
                 <Button
                   size="sm"
                   variant="ghost"
                   onClick={handleCopyAccount}
-                  className="shrink-0 h-8 gap-1 text-xs"
+                  className="h-8 shrink-0 gap-1 text-xs"
                 >
                   {copied ? (
                     <>
                       <Check className="h-3.5 w-3.5 text-emerald-600" />
-                      <span className="text-emerald-600 font-medium">Copied</span>
+                      <span className="font-medium text-emerald-600">Copied</span>
                     </>
                   ) : (
                     <>
@@ -244,9 +246,10 @@ export function PaymentQrDialog({
                 No {currentMeta.label} QR uploaded yet
               </p>
               <p className="mt-1 max-w-xs text-xs text-neutral-500">
-                The hostel owner hasn&apos;t added their {currentMeta.label} QR yet. You can switch to another payment method above or ask the warden.
+                The hostel owner hasn&apos;t added their {currentMeta.label} QR yet. You can switch
+                to another payment method above or ask the warden.
               </p>
-              <div className="mt-4 flex items-center gap-1.5 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 border border-amber-200/80">
+              <div className="mt-4 flex items-center gap-1.5 rounded-lg border border-amber-200/80 bg-amber-50 px-3 py-2 text-xs text-amber-800">
                 <AlertCircle className="h-4 w-4 shrink-0 text-amber-600" />
                 <span>Hostel owner can configure QRs under Settings → Payment QRs</span>
               </div>
@@ -260,8 +263,12 @@ export function PaymentQrDialog({
           <ol className="mt-1 list-inside list-decimal space-y-0.5 text-neutral-500">
             <li>Open your {currentMeta.label} or mobile banking app</li>
             <li>Scan the QR code above or save image to scan from gallery</li>
-            <li>Enter exact amount and put your <strong>Name & Room No</strong> in remarks</li>
-            <li>Tap <strong>I&apos;ve Paid</strong> below, then upload the success screenshot</li>
+            <li>
+              Enter exact amount and put your <strong>Name & Room No</strong> in remarks
+            </li>
+            <li>
+              Tap <strong>I&apos;ve Paid</strong> below, then upload the success screenshot
+            </li>
           </ol>
         </div>
       </div>

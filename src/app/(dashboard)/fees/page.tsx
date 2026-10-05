@@ -7,10 +7,11 @@ import {
   hostelGhar,
   normalizeResident,
   normalizeRoom,
+  toApiError,
   toPaginated,
   unwrap,
 } from "@/lib/hostelGhar";
-import type { Fee, HostelDetail } from "@/lib/api-types";
+import type { BackendFeeStatus, Fee, FeeStatus, HostelDetail } from "@/lib/api-types";
 import type { Resident } from "@/types/resident";
 import type { Room } from "@/types/hostel";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -42,10 +43,41 @@ interface FeeRow {
   totalPayable?: number;
   paidAmount?: number;
   dueDate: string;
-  status: "PAID" | "PENDING" | "OVERDUE" | "PARTIAL";
+  status: FeeStatus;
 }
 
-const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+/** Backend sends PARTIALLY_PAID; UI normalizes both spellings to PARTIAL. */
+function toFeeRowStatus(raw: Fee["status"] | string | undefined): FeeStatus {
+  const v = String(raw ?? "")
+    .toUpperCase()
+    .trim();
+  if (v === "PARTIAL" || v === "PARTIALLY_PAID" || v === "PARTIALLY-PAID") return "PARTIAL";
+  if (v === "PAID" || v === "PENDING" || v === "OVERDUE") return v;
+  return "PENDING";
+}
+
+/** Status options for the manual override dropdown (no NULL — backend rejects it). */
+const FEE_STATUS_OPTIONS: { value: BackendFeeStatus; label: string }[] = [
+  { value: "PENDING", label: "Pending" },
+  { value: "PARTIALLY_PAID", label: "Partially paid" },
+  { value: "PAID", label: "Paid" },
+  { value: "OVERDUE", label: "Overdue" },
+];
+
+const MONTH_NAMES = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
 
 function billingLabel(month?: number, year?: number): string {
   if (!month || !year) return "—";
@@ -56,7 +88,7 @@ function billingLabel(month?: number, year?: number): string {
 function feeToRow(
   f: Fee,
   roomByResident: Map<string, string>,
-  nameByResident: Map<string, string>,
+  nameByResident: Map<string, string>
 ): FeeRow {
   const nested = f.resident ?? null;
   const nestedName =
@@ -79,8 +111,7 @@ function feeToRow(
       f.residentName ||
       (f.residentId ? (nameByResident.get(f.residentId) ?? "Resident") : "Resident"),
     roomNumber:
-      (nestedRoom || "").trim() ||
-      (f.residentId ? (roomByResident.get(f.residentId) ?? "") : ""),
+      (nestedRoom || "").trim() || (f.residentId ? (roomByResident.get(f.residentId) ?? "") : ""),
     hostelId: f.hostelId,
     feeType: f.feeType,
     billingMonth: f.billingMonth,
@@ -90,7 +121,7 @@ function feeToRow(
     totalPayable: Number(f.totalPayable ?? total) || 0,
     paidAmount: f.paidAmount !== undefined ? Number(f.paidAmount) : undefined,
     dueDate: f.dueDate ?? "",
-    status: f.status,
+    status: toFeeRowStatus(f.status),
   };
 }
 
@@ -111,10 +142,38 @@ async function resolveHostelId(preferred?: string | null): Promise<string | null
 }
 
 const INITIAL_FEES: FeeRow[] = [
-  { id: "fee-1", residentName: "Aashish Shah", roomNumber: "A-101", amount: 9000, dueDate: "2026-09-10", status: "PAID" },
-  { id: "fee-2", residentName: "Suman Gurung", roomNumber: "A-101", amount: 9000, dueDate: "2026-09-15", status: "PENDING" },
-  { id: "fee-3", residentName: "Ramesh Karki", roomNumber: "B-202", amount: 12000, dueDate: "2026-09-08", status: "OVERDUE" },
-  { id: "fee-4", residentName: "Nisha Rai", roomNumber: "C-305", amount: 10500, dueDate: "2026-09-20", status: "PARTIAL" },
+  {
+    id: "fee-1",
+    residentName: "Aashish Shah",
+    roomNumber: "A-101",
+    amount: 9000,
+    dueDate: "2026-09-10",
+    status: "PAID",
+  },
+  {
+    id: "fee-2",
+    residentName: "Suman Gurung",
+    roomNumber: "A-101",
+    amount: 9000,
+    dueDate: "2026-09-15",
+    status: "PENDING",
+  },
+  {
+    id: "fee-3",
+    residentName: "Ramesh Karki",
+    roomNumber: "B-202",
+    amount: 12000,
+    dueDate: "2026-09-08",
+    status: "OVERDUE",
+  },
+  {
+    id: "fee-4",
+    residentName: "Nisha Rai",
+    roomNumber: "C-305",
+    amount: 10500,
+    dueDate: "2026-09-20",
+    status: "PARTIAL",
+  },
 ];
 
 export default function FeesPage() {
@@ -131,10 +190,16 @@ export default function FeesPage() {
   const [paying, setPaying] = useState<FeeRow | null>(null);
   const [payAmount, setPayAmount] = useState("");
   const [payMethod, setPayMethod] = useState("CASH");
+  const [payStatus, setPayStatus] = useState<BackendFeeStatus | "AUTO">("AUTO");
   const [payError, setPayError] = useState<string | null>(null);
   const [isPaying, setIsPaying] = useState(false);
-  const { proofs, pendingCount, isLoading: proofsLoading, refetch: refetchProofs } =
-    useHostelPaymentProofs(hostelId);
+  const [statusUpdatingId, setStatusUpdatingId] = useState<string | null>(null);
+  const {
+    proofs,
+    pendingCount,
+    isLoading: proofsLoading,
+    refetch: refetchProofs,
+  } = useHostelPaymentProofs(hostelId);
   const proofByFee = new Map(proofs.map((p) => [String(p.feeId), p]));
 
   const refreshFees = useCallback(
@@ -193,7 +258,10 @@ export default function FeesPage() {
         let mapped: FeeRow[] = [];
         try {
           // GET /fees/hostels/:hostelId — owner/admin ledger.
-          const res = await hostelGhar.fees.hostelFees(hid, statusFilter ? { status: statusFilter } : undefined);
+          const res = await hostelGhar.fees.hostelFees(
+            hid,
+            statusFilter ? { status: statusFilter } : undefined
+          );
           const items = toPaginated<Fee>(res.data).items;
           const roomById = new Map(loadedResidents.map((r) => [r.id, r.roomNumber]));
           const nameById = new Map(loadedResidents.map((r) => [r.id, r.name]));
@@ -243,13 +311,16 @@ export default function FeesPage() {
     if (rows.length === 0 && loadError) return INITIAL_FEES;
     return rows;
   }, [serverFees, loadError]);
-  const usingFallback =
-    fees.length > 0 && (serverFees ?? []).length === 0 && Boolean(loadError);
+  const usingFallback = fees.length > 0 && (serverFees ?? []).length === 0 && Boolean(loadError);
 
   const totals = useMemo(() => {
     const totalOf = (f: FeeRow) => Number(f.totalPayable ?? f.amount) || 0;
     const paid = fees.filter((f) => f.status === "PAID").reduce((s, i) => s + totalOf(i), 0);
-    const pending = fees.filter((f) => f.status === "PENDING" || f.status === "PARTIAL").reduce((s, i) => s + totalOf(i), 0);
+    const pending = fees
+      .filter(
+        (f) => f.status === "PENDING" || f.status === "PARTIAL" || f.status === "PARTIALLY_PAID"
+      )
+      .reduce((s, i) => s + totalOf(i), 0);
     const overdue = fees.filter((f) => f.status === "OVERDUE").reduce((s, i) => s + totalOf(i), 0);
     return { paid, pending, overdue };
   }, [fees]);
@@ -295,11 +366,13 @@ export default function FeesPage() {
     const remaining = Number(row.totalPayable ?? row.amount) - Number(row.paidAmount ?? 0);
     setPayAmount(String(Math.max(0, Math.round(remaining))));
     setPayMethod("CASH");
+    setPayStatus("AUTO");
     setPayError(null);
   }
 
   /** Backend derives status: paidAmount >= totalPayable → PAID, >0 → PARTIAL. */
   function previewStatus(row: FeeRow, addAmount: number): FeeRow["status"] {
+    if (payStatus !== "AUTO") return toFeeRowStatus(payStatus);
     const total = Number(row.totalPayable ?? row.amount) || 0;
     const paid = (Number(row.paidAmount ?? 0) || 0) + addAmount;
     if (paid >= total && total > 0) return "PAID";
@@ -317,13 +390,15 @@ export default function FeesPage() {
       return;
     }
     // PATCH /fees/:id/payment — owner/admin only (backend enforces role).
-    // Status is NOT sent — backend derives it from paidAmount vs totalPayable.
+    // When the owner picks a status explicitly (not AUTO) it is sent as an
+    // override; otherwise the backend derives it from paid vs payable.
     setIsPaying(true);
     setPayError(null);
     try {
       const res = await hostelGhar.fees.recordPayment(paying.id, {
         amount,
         method: payMethod as "CASH" | "ESEWA" | "KHALTI" | "BANK",
+        ...(payStatus !== "AUTO" ? { status: payStatus } : {}),
       });
       const payload = unwrap<Fee | null>(res.data);
       if (payload) {
@@ -342,11 +417,39 @@ export default function FeesPage() {
         success("Payment recorded", `${formatCurrency(amount)} · ${payMethod}`);
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Try again.";
-      setPayError(message);
-      toastError("Couldn't record payment", message);
+      const shape = toApiError(err);
+      setPayError(shape.message);
+      toastError("Couldn't record payment", shape.message);
     } finally {
       setIsPaying(false);
+    }
+  }
+
+  /** Manual status override straight from the table (PENDING / PAID / OVERDUE / PARTIALLY_PAID). */
+  async function handleStatusChange(row: FeeRow, next: BackendFeeStatus) {
+    const current = row.status === "PARTIAL" ? "PARTIALLY_PAID" : row.status;
+    if (next === current) return;
+    setStatusUpdatingId(row.id);
+    try {
+      const res = await hostelGhar.fees.updateStatus(row.id, { status: next });
+      const payload = unwrap<Fee | null>(res.data);
+      if (payload) {
+        const roomById = new Map(residents.map((r) => [r.id, r.roomNumber]));
+        const nameById = new Map(residents.map((r) => [r.id, r.name]));
+        const updated = feeToRow(payload, roomById, nameById);
+        setServerFees((prev) => (prev ?? []).map((f) => (f.id === updated.id ? updated : f)));
+      } else if (hostelId) {
+        setServerFees(await refreshFees(hostelId, statusFilter || undefined));
+      }
+      success(
+        "Status updated",
+        `${row.residentName} → ${next === "PARTIALLY_PAID" ? "PARTIAL" : next}`
+      );
+    } catch (err) {
+      const shape = toApiError(err);
+      toastError("Couldn't update status", shape.message);
+    } finally {
+      setStatusUpdatingId(null);
     }
   }
 
@@ -370,7 +473,9 @@ export default function FeesPage() {
       sortable: true,
       render: (f) => (
         <span>
-          <span className="block font-bold">{formatCurrency(Number(f.totalPayable ?? f.amount))}</span>
+          <span className="block font-bold">
+            {formatCurrency(Number(f.totalPayable ?? f.amount))}
+          </span>
           <span className="block text-xs text-neutral-500">
             base {formatCurrency(f.amount)}
             {f.dueAmount ? ` + due ${formatCurrency(f.dueAmount)}` : ""}
@@ -386,7 +491,9 @@ export default function FeesPage() {
       render: (f) => (
         <span>
           <span className="block font-medium">{billingLabel(f.billingMonth, f.billingYear)}</span>
-          <span className="block text-xs text-neutral-500">{f.feeType ?? "MONTHLY_HOSTEL_FEE"}</span>
+          <span className="block text-xs text-neutral-500">
+            {f.feeType ?? "MONTHLY_HOSTEL_FEE"}
+          </span>
         </span>
       ),
     },
@@ -400,7 +507,24 @@ export default function FeesPage() {
       key: "status",
       header: "Status",
       sortable: true,
-      render: (f) => <Badge tone={statusTone(f.status)}>{f.status}</Badge>,
+      render: (f) => (
+        <span className="inline-flex items-center gap-2">
+          <Badge tone={statusTone(f.status)}>{f.status}</Badge>
+          <select
+            aria-label={`Change status for ${f.residentName}`}
+            value={f.status === "PARTIAL" ? "PARTIALLY_PAID" : f.status}
+            disabled={statusUpdatingId === f.id}
+            onChange={(e) => void handleStatusChange(f, e.target.value as BackendFeeStatus)}
+            className="h-7 rounded-md border border-surface-border bg-white px-1.5 text-xs text-neutral-700 outline-none focus:border-brand-ink disabled:opacity-60"
+          >
+            {FEE_STATUS_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </span>
+      ),
     },
     {
       key: "receipt",
@@ -428,7 +552,10 @@ export default function FeesPage() {
   ];
 
   return (
-    <DashboardShell title="Fees" subtitle="Hostel Ghar / Finance / Fees — monthly charges and collection status.">
+    <DashboardShell
+      title="Fees"
+      subtitle="Hostel Ghar / Finance / Fees — monthly charges and collection status."
+    >
       <Protected permission="MANAGE_PAYMENTS" redirectTo="/dashboard">
         <div className="mb-4 grid gap-4 sm:grid-cols-3">
           {[
@@ -487,23 +614,6 @@ export default function FeesPage() {
         {paying && (
           <Card className="mb-4 border-brand-ink p-5">
             <form onSubmit={handleRecordPayment} className="grid gap-4 sm:grid-cols-4" noValidate>
-              <div className="sm:col-span-2">
-                <p className="text-sm font-semibold">{paying.residentName}</p>
-                <p className="text-xs text-neutral-500">
-                  Room {paying.roomNumber || "—"} · Payable{" "}
-                  {formatCurrency(Number(paying.totalPayable ?? paying.amount))} · Paid{" "}
-                  {formatCurrency(Number(paying.paidAmount ?? 0))} · Now{" "}
-                  <span className="font-semibold text-neutral-800">{paying.status}</span>
-                  {" → "}
-                  <span className="font-semibold text-neutral-900">
-                    {previewStatus(paying, Number(payAmount) || 0)}
-                  </span>
-                </p>
-                <p className="mt-1 text-xs text-neutral-400">
-                  Status is set by backend from paid vs payable — pay full{" "}
-                  {formatCurrency(Number(paying.totalPayable ?? paying.amount))} to reach PAID.
-                </p>
-              </div>
               <Input
                 label="Amount (Rs.)"
                 type="number"
@@ -512,7 +622,10 @@ export default function FeesPage() {
                 required
               />
               <div>
-                <label htmlFor="fee-pay-method" className="mb-1.5 block text-[13px] font-medium text-neutral-800">
+                <label
+                  htmlFor="fee-pay-method"
+                  className="mb-1.5 block text-[13px] font-medium text-neutral-800"
+                >
                   Method
                 </label>
                 <select
@@ -527,8 +640,39 @@ export default function FeesPage() {
                   <option value="BANK">Bank</option>
                 </select>
               </div>
-              <div className="sm:col-span-4 flex justify-end gap-2">
-                <Button variant="outline" type="button" onClick={() => setPaying(null)} disabled={isPaying}>
+              <div>
+                <label
+                  htmlFor="fee-pay-status"
+                  className="mb-1.5 block text-[13px] font-medium text-neutral-800"
+                >
+                  Status
+                </label>
+                <select
+                  id="fee-pay-status"
+                  value={payStatus}
+                  onChange={(e) => setPayStatus(e.target.value as BackendFeeStatus | "AUTO")}
+                  className={selectClass}
+                >
+                  <option value="AUTO">
+                    Auto ({previewStatus(paying, Number(payAmount) || 0)})
+                  </option>
+                  {FEE_STATUS_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1 text-xs text-neutral-400">
+                  Auto derives status from paid vs payable; pick a value to override.
+                </p>
+              </div>
+              <div className="flex justify-end gap-2 sm:col-span-4">
+                <Button
+                  variant="outline"
+                  type="button"
+                  onClick={() => setPaying(null)}
+                  disabled={isPaying}
+                >
                   Cancel
                 </Button>
                 <Button type="submit" loading={isPaying}>
@@ -537,8 +681,12 @@ export default function FeesPage() {
               </div>
             </form>
             {payError && (
-              <p role="alert" className="mt-3 rounded-md bg-red-50 px-3 py-2 text-[13px] text-red-700">
-                {payError} — check DevTools Network: PATCH /fees/{paying.id}/payment must return 200 with the updated Fee.
+              <p
+                role="alert"
+                className="mt-3 rounded-md bg-red-50 px-3 py-2 text-[13px] text-red-700"
+              >
+                {payError} — check DevTools Network: PATCH /fees/{paying.id}/payment must return 200
+                with the updated Fee.
               </p>
             )}
           </Card>
@@ -558,10 +706,7 @@ export default function FeesPage() {
             }
             action={
               hostelId && !loadError ? (
-                <Button
-                  onClick={() => void handleGenerateMonthly()}
-                  loading={isGenerating}
-                >
+                <Button onClick={() => void handleGenerateMonthly()} loading={isGenerating}>
                   Generate Monthly Fees
                 </Button>
               ) : undefined
@@ -604,7 +749,8 @@ export default function FeesPage() {
           />
           {pendingCount === 0 && proofs.length === 0 && (
             <p className="mt-2 text-xs text-neutral-400">
-              No receipts yet — residents upload QR payment screenshots from My Payments → Upload receipt.
+              No receipts yet — residents upload QR payment screenshots from My Payments → Upload
+              receipt.
             </p>
           )}
         </div>

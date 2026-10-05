@@ -12,6 +12,8 @@ export function Modal({
   description,
   children,
   labelledBy,
+  className,
+  size = "md",
 }: {
   open: boolean;
   onClose: () => void;
@@ -19,6 +21,9 @@ export function Modal({
   description?: string;
   children: React.ReactNode;
   labelledBy?: string;
+  className?: string;
+  /** sm = 448px, md = 560px, lg = 672px (for content-heavy dialogs like checkout). */
+  size?: "sm" | "md" | "lg";
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -54,9 +59,12 @@ export function Modal({
         ref={panelRef}
         tabIndex={-1}
         className={cn(
-          "relative w-full max-w-md rounded-t-2xl bg-white p-6 shadow-pop outline-none",
-          "sm:rounded-xl",
-          "animate-[modal-in_180ms_ease-out]"
+          // Scroll-safe: never taller than viewport, body scrolls inside.
+          "relative flex max-h-[calc(100dvh-2rem)] w-full flex-col overflow-hidden rounded-t-2xl bg-white shadow-pop outline-none",
+          "sm:max-h-[calc(100dvh-4rem)] sm:rounded-xl",
+          size === "sm" ? "sm:max-w-md" : size === "lg" ? "sm:max-w-2xl" : "sm:max-w-lg",
+          "animate-[modal-in_180ms_ease-out]",
+          className
         )}
       >
         <button
@@ -67,12 +75,19 @@ export function Modal({
           <X className="h-5 w-5" />
         </button>
         {title && (
-          <h2 id="modal-title" className="pr-8 text-lg font-semibold text-neutral-900">
+          <h2
+            id="modal-title"
+            className="px-5 pr-12 pt-5 text-base font-semibold text-neutral-900 sm:px-6 sm:text-lg"
+          >
             {title}
           </h2>
         )}
-        {description && <p className="mt-1 text-sm text-neutral-500">{description}</p>}
-        <div className="mt-4">{children}</div>
+        {description && (
+          <p className="px-5 pt-1 text-[13px] text-neutral-500 sm:px-6 sm:text-sm">{description}</p>
+        )}
+        <div className="dashboard-scroll mt-3 min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-5 sm:px-6 sm:pb-6">
+          {children}
+        </div>
       </div>
     </div>,
     document.body

@@ -85,7 +85,10 @@ function writeLocalProofs(rows: PaymentProof[]) {
   window.dispatchEvent(new CustomEvent(PAYMENT_PROOFS_EVENT));
 }
 
-export function listLocalProofs(filter?: { hostelId?: string | null; feeId?: string }): PaymentProof[] {
+export function listLocalProofs(filter?: {
+  hostelId?: string | null;
+  feeId?: string;
+}): PaymentProof[] {
   let rows = readLocalProofs();
   if (filter?.hostelId) rows = rows.filter((r) => !r.hostelId || r.hostelId === filter.hostelId);
   if (filter?.feeId) rows = rows.filter((r) => r.feeId === filter.feeId);
@@ -139,7 +142,10 @@ export function normalizeProof(raw: unknown): PaymentProof | null {
   };
   const id = str(r.id ?? r._id ?? r.proofId ?? r.paymentProofId);
   if (!id) return null;
-  const rawStatus = str(r.status ?? r.reviewStatus ?? r.verificationStatus, "PENDING").toUpperCase();
+  const rawStatus = str(
+    r.status ?? r.reviewStatus ?? r.verificationStatus,
+    "PENDING"
+  ).toUpperCase();
   const status: PaymentProofStatus = rawStatus.includes("APPROV")
     ? "APPROVED"
     : rawStatus.includes("REJECT")
@@ -159,15 +165,26 @@ export function normalizeProof(raw: unknown): PaymentProof | null {
     feeId: str(r.feeId ?? r.fee_id ?? r.billId),
     hostelId: str(r.hostelId ?? r.hostel_id, "") || null,
     residentId: str(r.residentId ?? r.resident_id ?? nested?.id ?? nested?._id, "") || null,
-    residentName: str(r.residentName ?? r.resident_name) || str(nested?.name ?? nested?.fullName) || "Resident",
+    residentName:
+      str(r.residentName ?? r.resident_name) || str(nested?.name ?? nested?.fullName) || "Resident",
     residentEmail: str(r.residentEmail ?? nested?.email, "") || undefined,
     roomNumber: str(r.roomNumber ?? r.room_number ?? nested?.roomNumber, "") || undefined,
     feeLabel: str(r.feeLabel ?? r.month ?? r.billingLabel, "") || undefined,
     amount: num(r.amount ?? r.paidAmount, 0),
     method,
-    transactionRef: str(r.transactionRef ?? r.transactionId ?? r.txnId ?? r.reference, "") || undefined,
+    transactionRef:
+      str(r.transactionRef ?? r.transactionId ?? r.txnId ?? r.reference, "") || undefined,
     remarks: str(r.remarks ?? r.note ?? r.description, "") || undefined,
-    imageUrl: str(r.imageUrl ?? r.screenshotUrl ?? r.receiptUrl ?? r.proofUrl ?? r.screenshot ?? r.receipt ?? r.image ?? r.url),
+    imageUrl: str(
+      r.imageUrl ??
+        r.screenshotUrl ??
+        r.receiptUrl ??
+        r.proofUrl ??
+        r.screenshot ??
+        r.receipt ??
+        r.image ??
+        r.url
+    ),
     status,
     reviewNote: str(r.reviewNote ?? r.rejectionReason ?? r.adminNote, "") || undefined,
     reviewedBy: str(r.reviewedBy ?? r.verifiedBy, "") || undefined,
@@ -243,8 +260,8 @@ export async function fetchMyProofs(opts?: { hostelId?: string | null }): Promis
   let backend: PaymentProof[] = [];
   try {
     const res = await hostelGhar.resident.paymentProofs();
-    backend = toPaginated<unknown>(res.data).items
-      .map(normalizeProof)
+    backend = toPaginated<unknown>(res.data)
+      .items.map(normalizeProof)
       .filter((p): p is PaymentProof => Boolean(p));
   } catch {
     backend = [];
@@ -258,12 +275,17 @@ export async function fetchMyProofs(opts?: { hostelId?: string | null }): Promis
   const merged = backend.map((b) => {
     const over = overlayByFee.get(b.feeId);
     if (over && (over.reviewedAt ?? "") >= (b.createdAt ?? "")) {
-      return { ...b, status: over.status, reviewNote: over.reviewNote, reviewedAt: over.reviewedAt };
+      return {
+        ...b,
+        status: over.status,
+        reviewNote: over.reviewNote,
+        reviewedAt: over.reviewedAt,
+      };
     }
     return b;
   });
-  return [...merged, ...local.filter((l) => !seen.has(l.id) && !l.id.startsWith("overlay-"))].sort((a, b) =>
-    b.createdAt.localeCompare(a.createdAt)
+  return [...merged, ...local.filter((l) => !seen.has(l.id) && !l.id.startsWith("overlay-"))].sort(
+    (a, b) => b.createdAt.localeCompare(a.createdAt)
   );
 }
 
@@ -271,8 +293,8 @@ export async function fetchHostelProofs(hostelId: string): Promise<PaymentProof[
   let backend: PaymentProof[] = [];
   try {
     const res = await hostelGhar.fees.hostelPaymentProofs(hostelId);
-    backend = toPaginated<unknown>(res.data).items
-      .map(normalizeProof)
+    backend = toPaginated<unknown>(res.data)
+      .items.map(normalizeProof)
       .filter((p): p is PaymentProof => Boolean(p));
   } catch {
     backend = [];
@@ -287,7 +309,10 @@ export async function fetchHostelProofs(hostelId: string): Promise<PaymentProof[
   return merged.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
-export async function reviewPaymentProof(proof: PaymentProof, input: ReviewProofInput): Promise<PaymentProof> {
+export async function reviewPaymentProof(
+  proof: PaymentProof,
+  input: ReviewProofInput
+): Promise<PaymentProof> {
   const now = new Date().toISOString();
   try {
     const res = await api.patch(`${PREFIX}/payment-proofs/${proof.id}/review`, {
@@ -310,7 +335,8 @@ export async function reviewPaymentProof(proof: PaymentProof, input: ReviewProof
           /* ledger sync best-effort */
         }
       }
-      if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent(PAYMENT_PROOFS_EVENT));
+      if (typeof window !== "undefined")
+        window.dispatchEvent(new CustomEvent(PAYMENT_PROOFS_EVENT));
       return norm;
     }
   } catch (err) {

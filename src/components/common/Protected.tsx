@@ -17,19 +17,21 @@ export function Protected({
   redirectTo?: string;
   children: React.ReactNode;
 }) {
-  const { user, isLoading, role } = useAuth();
+  const { user, isLoading, role, subscriptionLoading } = useAuth();
   const { canAccess } = usePermissions();
   const router = useRouter();
   const roleOk = !roles || (role && roles.includes(role));
-  const permOk = canAccess(permission);
+  // Don't redirect on a stale FREE plan while the live plan resolves.
+  const planResolving = role === "HOSTEL_OWNER" && subscriptionLoading;
+  const permOk = planResolving ? true : canAccess(permission);
   useEffect(() => {
-    if (isLoading) return;
+    if (isLoading || planResolving) return;
     // Cookie-based auth: session lives in HttpOnly cookie + cached user.
     // No user (and revalidation failed) → login. Wrong role → login too.
     if (!user || !roleOk) router.replace("/login");
     else if (!permOk) router.replace(redirectTo);
-  }, [isLoading, user, roleOk, permOk, router, redirectTo]);
-  if (isLoading || !user || !roleOk || !permOk) {
+  }, [isLoading, planResolving, user, roleOk, permOk, router, redirectTo]);
+  if (isLoading || planResolving || !user || !roleOk || !permOk) {
     return (
       <div className="space-y-4" aria-label="Loading">
         <Skeleton className="h-8 w-48" />

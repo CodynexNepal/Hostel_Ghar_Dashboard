@@ -49,6 +49,10 @@ import type {
   FloorOverviewItem,
   RoomMixItem,
   AdminSummary,
+  AdminSummaryStats,
+  AdminSummaryHealth,
+  AdminSummaryPendingApprovals,
+  AdminRecentHostel,
   OwnerSummary,
   Owner,
   PaymentQr,
@@ -495,6 +499,106 @@ export function normalizeRoom(raw: unknown): Room {
   };
 }
 
+/** Canonical UI payment states (backend spells PARTIAL as PARTIALLY_PAID). */
+const PAYMENT_STATUSES = ["PAID", "PENDING", "OVERDUE", "PARTIAL"] as const;
+
+/** Payment-state snapshot for one resident's current billing cycle. */
+export interface ResidentFeeSnapshot {
+  billingMonth: number | null;
+  billingYear: number | null;
+  amount: number;
+  paidAmount: number;
+  dueAmount: number;
+  totalPayable: number;
+  dueDate: string | null;
+  status: Resident["paymentStatus"];
+}
+
+/**
+ * Normalize the fee embedded in a resident row.
+ *
+ * `GET /owner/residents` and `GET /hostels/:id/residents` return
+ * `{ ..., fee: { billingMonth, billingYear, amount, dueAmount, totalPayable,
+ * paidAmount, dueDate, status } }` — the payment state is NESTED under `fee`,
+ * not top-level, so a reader that only looks for `paymentStatus` sees nothing.
+ * `fee` may also arrive as an array of past cycles, in which case the newest
+ * (latest year, then month) wins.
+ *
+ * Returns `null` when the row carries no fee at all.
+ */
+export function normalizeResidentFee(raw: unknown): ResidentFeeSnapshot | null {
+  const r = (raw ?? {}) as Record<string, unknown>;
+  const num = (v: unknown, fb: number): number => {
+    const n = typeof v === "string" ? Number(v) : (v as number);
+    return Number.isFinite(n) ? n : fb;
+  };
+  const str = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
+  const pickIn = (src: Record<string, unknown>, ...keys: string[]): unknown => {
+    for (const k of keys) {
+      const v = src[k];
+      if (v !== undefined && v !== null && v !== "") return v;
+    }
+    return undefined;
+  };
+
+  const rawFee = r.fee ?? r.fees ?? r.currentFee ?? r.feeSummary;
+  const latest = Array.isArray(rawFee)
+    ? [...(rawFee as unknown[])]
+        .map((f) => (f ?? {}) as Record<string, unknown>)
+        .sort(
+          (a, b) =>
+            num(pickIn(b, "billingYear", "year"), 0) * 12 +
+            num(pickIn(b, "billingMonth", "month"), 0) -
+            (num(pickIn(a, "billingYear", "year"), 0) * 12 +
+              num(pickIn(a, "billingMonth", "month"), 0))
+        )[0]
+    : rawFee;
+  if (latest === null || latest === undefined || typeof latest !== "object") return null;
+  if (Array.isArray(latest)) return null;
+  const f = latest as Record<string, unknown>;
+
+  const amount = num(pickIn(f, "amount", "feeAmount", "monthlyRent"), 0);
+  const paidAmount = num(pickIn(f, "paidAmount", "paid_amount", "paid"), 0);
+  const totalPayable = num(
+    pickIn(f, "totalPayable", "total_payable", "amount", "totalAmount", "total"),
+    amount
+  );
+  const computedDue = Math.max(0, totalPayable - paidAmount);
+  const dueRaw = pickIn(f, "dueAmount", "due_amount", "outstanding", "remaining");
+
+  // Explicit status wins; otherwise derive it from paid vs. payable.
+  const statusRaw = str(pickIn(f, "status", "paymentStatus", "payment_status")).toUpperCase();
+  let status: Resident["paymentStatus"];
+  if (statusRaw === "PARTIALLY_PAID" || statusRaw === "PARTIALLY-PAID") {
+    status = "PARTIAL";
+  } else if ((PAYMENT_STATUSES as readonly string[]).includes(statusRaw)) {
+    status = statusRaw as Resident["paymentStatus"];
+  } else if (totalPayable > 0) {
+    status = paidAmount <= 0 ? "PENDING" : paidAmount >= totalPayable ? "PAID" : "PARTIAL";
+  } else {
+    status = "PENDING";
+  }
+
+  const monthRaw = pickIn(f, "billingMonth", "month");
+  const yearRaw = pickIn(f, "billingYear", "year");
+  // `dueAmount` is authoritative when it is non-zero, but some payloads report
+  // 0 for a genuinely unpaid fee (e.g. status OVERDUE with paidAmount 0). In
+  // that case `totalPayable - paidAmount` is the honest figure — without this
+  // an OVERDUE row would render as "Settled".
+  const explicitDue = num(dueRaw, 0);
+  const dueAmount = explicitDue > 0 ? explicitDue : computedDue;
+  return {
+    billingMonth: monthRaw === undefined ? null : num(monthRaw, 0),
+    billingYear: yearRaw === undefined ? null : num(yearRaw, 0),
+    amount,
+    paidAmount,
+    dueAmount,
+    totalPayable,
+    dueDate: str(pickIn(f, "dueDate", "due_date")) || null,
+    status,
+  };
+}
+
 /** Normalize backend resident shapes (snake/camel/_id/nested-room variants) into the UI `Resident`. */
 export function normalizeResident(raw: unknown): Resident {
   const r = (raw ?? {}) as Record<string, unknown>;
@@ -518,6 +622,15 @@ export function normalizeResident(raw: unknown): Resident {
     return Number.isFinite(n) ? n : fallback;
   };
   const str = (v: unknown): string => (typeof v === "string" ? v : String(v ?? ""));
+  /** Strip accidental markdown/protocol/www wrappers pasted into email cells. */
+  const cleanEmail = (v: unknown): string => {
+    const value = str(v).trim();
+    const inner = value.match(/\[([^\]]+)\]/)?.[1] ?? value;
+    return inner
+      .replace(/^https?:\/\//i, "")
+      .replace(/^www\./i, "")
+      .trim();
+  };
   // Name: prefer display fields, then first+last composition, then nested user.
   const userObj = (pick("user", "resident") ?? {}) as Record<string, unknown>;
   const firstName = str(pick("firstName", "first_name") ?? userObj.firstName ?? userObj.first_name);
@@ -528,25 +641,28 @@ export function normalizeResident(raw: unknown): Resident {
     composed ||
     str(userObj.name ?? userObj.fullName) ||
     "Resident";
-  const paymentRaw = String(
-    pick("paymentStatus", "payment_status", "feeStatus") ?? "PENDING"
-  ).toUpperCase();
+  // Payment state: a top-level status wins; otherwise use the nested fee
+  // snapshot (shared with `normalizeResidentFee`, used by the payments page).
+  const fee = normalizeResidentFee(raw);
+  const explicitPayment = String(pick("paymentStatus", "payment_status", "feeStatus") ?? "")
+    .trim()
+    .toUpperCase();
+  const paymentStatus = (PAYMENT_STATUSES as readonly string[]).includes(explicitPayment)
+    ? (explicitPayment as Resident["paymentStatus"])
+    : (fee?.status ?? "PENDING");
   const statusRaw = String(
     pick("status", "residentStatus", "resident_status") ?? "ACTIVE"
   ).toUpperCase();
   return {
     id: str(pick("id", "_id", "residentId", "resident_id", `r-${Date.now()}`)),
     name,
-    email: str(pick("email", "residentEmail")),
+    email: cleanEmail(pick("email", "residentEmail")),
     phone: str(pick("phone", "phoneNumber", "phone_number", "contactNumber")),
     roomNumber: str(pickRoom("roomNumber", "room_number", "roomNo", "room")),
     bedNumber: str(pickRoom("bedNumber", "bed_number", "bedNo", "bed")),
     floor: num(pickRoom("floor", "floorNumber", "floor_number"), 0),
-    paymentStatus: (["PAID", "PENDING", "OVERDUE", "PARTIAL"] as const).includes(
-      paymentRaw as Resident["paymentStatus"]
-    )
-      ? (paymentRaw as Resident["paymentStatus"])
-      : "PENDING",
+    roomType: str(pickRoom("roomType", "room_type")) || undefined,
+    paymentStatus: paymentStatus as Resident["paymentStatus"],
     status: (["ACTIVE", "INACTIVE", "PENDING", "VACATED"] as const).includes(
       statusRaw as Resident["status"]
     )
@@ -555,8 +671,14 @@ export function normalizeResident(raw: unknown): Resident {
     joinedDate: str(
       pick("joinedDate", "joined_date", "admissionDate", "createdAt", "created_at") ?? ""
     ),
-    monthlyRent: num(pick("monthlyRent", "monthly_rent", "rent", "feeAmount"), 0),
-    avatarUrl: (pick("avatarUrl", "avatar", "photoUrl") as string | undefined) ?? undefined,
+    monthlyRent: num(
+      pick("monthlyRent", "monthly_rent", "rent", "feeAmount") ??
+        (fee ? fee.totalPayable || fee.amount : undefined),
+      0
+    ),
+    avatarUrl:
+      (pick("imageUrl", "image_url", "avatarUrl", "avatar", "photoUrl", "profileImage") as
+        string | undefined) ?? undefined,
   };
 }
 
@@ -1071,10 +1193,20 @@ export function normalizeOwnerDashboard(raw: unknown): OwnerDashboard {
 function analyticsScopes(raw: unknown): Record<string, unknown>[] {
   const root = (unwrap<Record<string, unknown>>(raw) ?? {}) as Record<string, unknown>;
   const scopes = [root];
-  for (const key of ["data", "summary", "stats", "overview", "result"]) {
+  // One level of nesting: `data` / `summary` / `stats` / `overview` / `result`,
+  // plus the admin payload's `health` and `stats.occupancy` blocks.
+  for (const key of ["data", "summary", "stats", "overview", "result", "health", "occupancy"]) {
     const v = root[key];
     if (v !== null && typeof v === "object" && !Array.isArray(v)) {
       scopes.push(v as Record<string, unknown>);
+    }
+  }
+  // `data.stats.occupancy` sits two levels deep.
+  const stats = root["stats"];
+  if (stats !== null && typeof stats === "object" && !Array.isArray(stats)) {
+    const occ = (stats as Record<string, unknown>)["occupancy"];
+    if (occ !== null && typeof occ === "object" && !Array.isArray(occ)) {
+      scopes.push(occ as Record<string, unknown>);
     }
   }
   return scopes;
@@ -1083,6 +1215,17 @@ function analyticsScopes(raw: unknown): Record<string, unknown>[] {
 function analyticsNum(v: unknown, fallback = 0): number {
   const n = typeof v === "string" ? Number(v) : (v as number);
   return Number.isFinite(n) ? n : fallback;
+}
+
+/** `finiteNum`: number (or numeric string) → number, anything else → undefined. */
+function finiteNum(v: unknown): number | undefined {
+  const n = typeof v === "string" ? Number(v) : v;
+  return typeof n === "number" && Number.isFinite(n) ? n : undefined;
+}
+
+/** `strOrUndefined`: non-empty trimmed string → string, else undefined. */
+function strOrUndefined(v: unknown): string | undefined {
+  return typeof v === "string" && v.trim() !== "" ? v : undefined;
 }
 
 function analyticsFeeCounts(
@@ -1174,19 +1317,68 @@ export function normalizeAdminSummary(raw: unknown): AdminSummaryWithCounts {
     }
     return undefined;
   };
+  /**
+   * Numeric pick that REJECTS objects/arrays. Needed because the admin payload
+   * nests `occupancy` as an object inside `stats` — without this guard the
+   * flat `"occupancy"` alias would resolve to that object and coerce to 0.
+   */
   const optNum = (...keys: string[]): number | undefined => {
     const v = pick(...keys);
-    return v === undefined ? undefined : analyticsNum(v, 0);
+    if (v === undefined || typeof v === "object") return undefined;
+    return analyticsNum(v, 0);
   };
+  const root = (unwrap<Record<string, unknown>>(raw) ?? {}) as Record<string, unknown>;
+
+  const totalBeds = optNum("totalBeds", "total_beds", "beds");
+  const occupiedBeds = optNum("occupiedBeds", "occupied_beds", "occupied", "bedsOccupied");
+  const totalResidents = optNum(
+    "totalResidents",
+    "total_residents",
+    "residents",
+    "residentCount",
+    "activeResidents"
+  );
+  const paidAmount = optNum("paidAmount", "paid_amount", "collectedAmount", "collected");
+  const outstanding = optNum(
+    "outstandingAmount",
+    "outstanding_amount",
+    "outstanding",
+    "pendingDues"
+  );
+  const paidPlans = optNum("mrrPaidPlans", "mrr_paid_plans");
+  const mrr = optNum("mrr", "monthlyRevenue", "monthly_revenue", "revenue");
+
+  // `stats.occupancy.rate` is a 0–1 fraction; the UI shows a percentage.
+  // Prefer deriving from bed counts so a rounded/quantized rate can't mislead.
+  const rawRate = optNum("rate", "occupancyRate", "occupancy_rate");
+  const occupancyRate =
+    rawRate === undefined
+      ? undefined
+      : totalBeds && totalBeds > 0 && occupiedBeds !== undefined
+        ? Math.round((occupiedBeds / totalBeds) * 100)
+        : Math.round(rawRate * 100);
+
+  const activePlans = optNum("activePlans", "active_plans", "activeSubscriptions");
+
   return {
-    totalHostels: optNum("totalHostels", "total_hostels", "hostelCount"),
-    totalResidents: optNum("totalResidents", "total_residents", "residents", "residentCount"),
-    mrr: optNum("mrr", "monthlyRevenue", "monthly_revenue", "revenue"),
+    totalHostels: optNum("totalHostels", "total_hostels", "hostelCount", "hostels"),
+    totalResidents,
+    users: optNum("users", "totalUsers", "total_users", "userCount"),
+    activeResidents: optNum("activeResidents", "active_residents"),
+    pendingBookings: optNum("pendingBookings", "pending_bookings"),
+    pendingLeaves: optNum("pendingLeaves", "pending_leaves"),
+    unpaidFees: optNum("unpaidFees", "unpaid_fees"),
+    paidAmount,
+    outstandingAmount: outstanding,
+    currency: (pick("currency", "mrrCurrency") as string | undefined) ?? undefined,
+    mrr,
+    mrrBasis: (pick("mrrBasis", "mrr_basis") as string | undefined) ?? undefined,
     monthlyRevenue: optNum("monthlyRevenue", "monthly_revenue", "mrr", "revenue"),
-    totalRevenue: optNum("totalRevenue", "total_revenue", "revenue"),
+    totalRevenue: optNum("totalRevenue", "total_revenue", "paidAmount", "revenue"),
     pendingAmount: optNum(
       "pendingAmount",
       "pending_amount",
+      "outstandingAmount",
       "pendingDues",
       "dues",
       "outstanding",
@@ -1197,15 +1389,235 @@ export function normalizeAdminSummary(raw: unknown): AdminSummaryWithCounts {
     pendingFees: optNum("pendingFees", "pending_fees", "pendingCount"),
     overdueFees: optNum("overdueFees", "overdue_fees", "overdueCount"),
     collectionRate: optNum("collectionRate", "collection_rate", "collectionPercentage"),
-    occupancyRate: optNum("occupancyRate", "occupancy_rate", "occupancy"),
-    totalBeds: optNum("totalBeds", "total_beds", "beds"),
-    occupiedBeds: optNum("occupiedBeds", "occupied_beds", "occupied"),
-    totalRooms: optNum("totalRooms", "total_rooms", "rooms"),
+    occupancyRate,
+    totalBeds,
+    occupiedBeds,
+    availableBeds: optNum("availableBeds", "available_beds"),
+    totalRooms: optNum("totalRooms", "total_rooms", "rooms", "roomCount"),
+    activePlans: activePlans ?? (paidPlans !== undefined ? String(paidPlans) : undefined),
+    generatedAt: (pick("generatedAt", "generated_at") as string | undefined) ?? undefined,
+    isCached: typeof root.isCached === "boolean" ? root.isCached : undefined,
+    cacheLevel: (root.cacheLevel as string | undefined) ?? undefined,
+    pendingApprovals: normalizeAdminPendingApprovals(pick("pendingApprovals")),
+    recentHostels: normalizeAdminRecentHostels(
+      pick("recentHostels", "recent_hostels") ?? root.recentHostels
+    ),
+    stats: normalizeAdminStats(pick("stats")),
+    health: normalizeAdminHealth(pick("health")),
     revenueTrend: normalizeRevenueTrend(
       pick("revenueTrend", "revenue_trend", "revenueSeries", "revenueByMonth")
     ),
     feeCounts: analyticsFeeCounts(pick),
   };
+}
+
+function normalizeAdminPendingApprovals(raw: unknown): AdminSummaryPendingApprovals | undefined {
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const r = raw as Record<string, unknown>;
+  const count = r.count ?? r.total;
+  const reviewUrl = r.reviewUrl ?? r.review_url;
+  const n = typeof count === "string" ? Number(count) : count;
+  return {
+    count: typeof n === "number" && Number.isFinite(n) ? n : undefined,
+    reviewUrl: typeof reviewUrl === "string" ? reviewUrl : undefined,
+  };
+}
+
+function normalizeAdminStats(raw: unknown): AdminSummaryStats | undefined {
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const r = raw as Record<string, unknown>;
+  const occRaw = r.occupancy;
+  const occ = (
+    occRaw !== null && typeof occRaw === "object" && !Array.isArray(occRaw)
+      ? (occRaw as Record<string, unknown>)
+      : {}
+  ) as Record<string, unknown>;
+  return {
+    totalHostels: finiteNum(r.totalHostels ?? r.total_hostels),
+    totalResidents: finiteNum(r.totalResidents ?? r.total_residents),
+    mrr: finiteNum(r.mrr),
+    mrrBasis: strOrUndefined(r.mrrBasis ?? r.mrr_basis),
+    mrrCurrency: strOrUndefined(r.mrrCurrency ?? r.mrr_currency),
+    mrrPaidPlans: finiteNum(r.mrrPaidPlans),
+    mrrFreePlans: finiteNum(r.mrrFreePlans),
+    mrrLapsedPlans: finiteNum(r.mrrLapsedPlans),
+    occupancy: {
+      totalBeds: finiteNum(occ.totalBeds),
+      occupiedBeds: finiteNum(occ.occupiedBeds),
+      availableBeds: finiteNum(occ.availableBeds),
+      rate: finiteNum(occ.rate),
+    },
+  };
+}
+
+function normalizeAdminHealth(raw: unknown): AdminSummaryHealth | undefined {
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const r = raw as Record<string, unknown>;
+  return {
+    monthlyRevenue: finiteNum(r.monthlyRevenue ?? r.monthly_revenue),
+    totalRevenue: finiteNum(r.totalRevenue ?? r.total_revenue),
+    pendingDues: finiteNum(r.pendingDues ?? r.pending_dues),
+    rooms: finiteNum(r.rooms ?? r.totalRooms),
+    bedsOccupied: finiteNum(r.bedsOccupied ?? r.occupiedBeds),
+    activePlans: finiteNum(r.activePlans ?? r.active_plans),
+    currency: strOrUndefined(r.currency),
+    collectionRate: finiteNum(r.collectionRate ?? r.collection_rate),
+  };
+}
+
+/**
+ * Normalize one GET /admin/hostels (or /hostels) row onto the `Hostel` shape.
+ *
+ * Live payload (verified against the backend):
+ *   `{ id, name, type, city, address, phone, email, logoUrl,
+ *      owner: { id, firstName, lastName, email, phone, avatarUrl },
+ *      rooms, beds, occupied }`
+ *
+ * The counts arrive as `rooms` / `beds` / `occupied`, NOT as `totalRooms` /
+ * `totalBeds` / `occupiedBeds`, and the owner arrives as a nested object with
+ * `firstName` + `lastName` rather than a flat `ownerName`. Rendering the raw
+ * row produced "undefined/undefined" in the Occupancy column and a blank Owner
+ * column, so every list consumer must normalize before rendering.
+ *
+ * `status` is absent from the list payload; it is derived the same way the
+ * backend does — an assigned owner means ACTIVE, otherwise PENDING.
+ * A real backend status (ACTIVE / SUSPENDED / INACTIVE / BANNED / DISABLED /
+ * PENDING / …) always wins; only a missing/unknown value is derived.
+ */
+export function normalizeHostel(raw: unknown): Hostel {
+  const r = (raw ?? {}) as Record<string, unknown>;
+  const pick = (...keys: string[]): unknown => {
+    for (const key of keys) {
+      const v = r[key];
+      if (v !== undefined && v !== null && v !== "") return v;
+    }
+    // Also look one level down — suspend responses nest the hostel under
+    // `hostel` / `data.hostel` while the list returns it flat.
+    for (const nest of ["hostel", "data"] as const) {
+      const n = r[nest];
+      if (n !== null && typeof n === "object" && !Array.isArray(n)) {
+        for (const key of keys) {
+          const v = (n as Record<string, unknown>)[key];
+          if (v !== undefined && v !== null && v !== "") return v;
+        }
+      }
+    }
+    return undefined;
+  };
+  const count = (...keys: string[]): number => {
+    const n = finiteNum(pick(...keys));
+    return n !== undefined && n >= 0 ? n : 0;
+  };
+
+  const ownerRaw = r.owner;
+  const o =
+    ownerRaw !== null && typeof ownerRaw === "object" && !Array.isArray(ownerRaw)
+      ? (ownerRaw as Record<string, unknown>)
+      : null;
+  const owner = o
+    ? {
+        id: strOrUndefined(o.id) ?? strOrUndefined(o.ownerId) ?? "",
+        firstName: strOrUndefined(o.firstName) ?? strOrUndefined(o.first_name) ?? "",
+        lastName: strOrUndefined(o.lastName) ?? strOrUndefined(o.last_name) ?? "",
+        email: strOrUndefined(o.email) ?? "",
+        phone: strOrUndefined(o.phone) ?? strOrUndefined(o.phoneNumber) ?? null,
+        avatarUrl: strOrUndefined(o.avatarUrl) ?? strOrUndefined(o.avatar_url) ?? null,
+      }
+    : null;
+
+  const firstName = owner?.firstName ?? "";
+  const lastName = owner?.lastName ?? "";
+  const ownerName =
+    strOrUndefined(pick("ownerName", "owner_name")) ??
+    strOrUndefined(o ? `${firstName} ${lastName}`.trim() : undefined) ??
+    (owner ? null : "No owner");
+
+  const logoUrl = strOrUndefined(pick("logoUrl", "logo_url", "imageUrl", "image_url")) ?? null;
+
+  const statusRaw = strOrUndefined(
+    pick("status", "hostelStatus", "hostel_status", "state", "isActive", "is_active", "active")
+  )?.toUpperCase();
+  // Backend may send booleans (isActive / active) instead of a status string.
+  const boolActive =
+    pick("isActive", "is_active", "active") === true
+      ? "ACTIVE"
+      : pick("isActive", "is_active", "active") === false
+        ? "SUSPENDED"
+        : null;
+  const effectiveRaw =
+    statusRaw === "TRUE" || statusRaw === "FALSE" ? null : (statusRaw ?? boolActive);
+  const backendStatus =
+    effectiveRaw === "ACTIVE" || effectiveRaw === "SUSPENDED"
+      ? effectiveRaw
+      : effectiveRaw === "INACTIVE" ||
+          effectiveRaw === "BANNED" ||
+          effectiveRaw === "DISABLED" ||
+          effectiveRaw === "BLOCKED" ||
+          effectiveRaw === "SUSPEND"
+        ? ("SUSPENDED" as const)
+        : effectiveRaw === "PENDING"
+          ? ("PENDING" as const)
+          : null;
+  const status: Hostel["status"] = backendStatus ?? (owner ? "ACTIVE" : "PENDING");
+
+  return {
+    id: strOrUndefined(pick("id", "hostelId", "hostel_id")) ?? "",
+    name: strOrUndefined(pick("name", "hostelName", "hostel_name")) ?? "Unnamed hostel",
+    type: strOrUndefined(pick("type", "hostelType", "hostel_type")),
+    address: strOrUndefined(pick("address")) ?? "",
+    city: strOrUndefined(pick("city")) ?? "",
+    phone: strOrUndefined(pick("phone", "phoneNumber", "phone_number")) ?? "",
+    email: strOrUndefined(pick("email")) ?? owner?.email ?? "",
+    totalRooms: count("totalRooms", "total_rooms", "rooms", "roomCount", "room_count"),
+    totalBeds: finiteNum(pick("totalBeds", "total_beds", "beds", "bedCount")) ?? null,
+    occupiedBeds: count("occupiedBeds", "occupied_beds", "occupied", "bedsOccupied"),
+    status,
+    ownerName,
+    owner,
+    logoUrl,
+  };
+}
+
+/** Normalize a paginated/raw hostel list payload into `Hostel[]`. */
+export function normalizeHostelList(payload: unknown): Hostel[] {
+  return toPaginated<unknown>(payload).items.map(normalizeHostel);
+}
+
+function normalizeAdminRecentHostels(raw: unknown): AdminRecentHostel[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((item) => {
+      if (item === null || typeof item !== "object") return null;
+      const r = item as Record<string, unknown>;
+      const ownerRaw = r.owner;
+      const o = (
+        ownerRaw !== null && typeof ownerRaw === "object" && !Array.isArray(ownerRaw)
+          ? (ownerRaw as Record<string, unknown>)
+          : null
+      ) as Record<string, unknown> | null;
+      const id = strOrUndefined(r.id) ?? strOrUndefined(r.hostelId) ?? "";
+      const name = strOrUndefined(r.name) ?? strOrUndefined(r.hostelName) ?? "";
+      if (!id && !name) return null;
+      const row: AdminRecentHostel = {
+        id: id || name,
+        name: name || "Unnamed hostel",
+        type: strOrUndefined(r.type) ?? strOrUndefined(r.hostelType),
+        city: strOrUndefined(r.city),
+        logoUrl: strOrUndefined(r.logoUrl) ?? strOrUndefined(r.imageUrl) ?? null,
+        createdAt: strOrUndefined(r.createdAt) ?? strOrUndefined(r.created_at) ?? null,
+        owner: null,
+      };
+      if (o) {
+        row.owner = {
+          id: strOrUndefined(o.id),
+          name: strOrUndefined(o.name) ?? strOrUndefined(o.ownerName),
+          email: strOrUndefined(o.email),
+          avatarUrl: strOrUndefined(o.avatarUrl) ?? strOrUndefined(o.avatar_url) ?? null,
+        };
+      }
+      return row;
+    })
+    .filter((h): h is AdminRecentHostel => h !== null);
 }
 
 /* ---------------- Subscriptions (live contract) ---------------- */
@@ -1762,7 +2174,13 @@ export const hostelGhar = {
 
   admin: {
     listHostels: (params?: ListParams) =>
-      getWithRetry<ApiEnvelope<Hostel[]> | Hostel[]>(`${PREFIX}/admin/hostels`, params),
+      getWithRetry<ApiEnvelope<Hostel[]> | Hostel[]>(
+        `${PREFIX}/admin/hostels`,
+        // Backend sends ETag → browser revalidates → 304 with EMPTY body and
+        // the table keeps the stale ACTIVE row. Bypass the HTTP cache so a
+        // refetch after suspend always returns a 200 with the real list.
+        noCacheParams(params)
+      ),
     // Create WITH logo FILE: backend accepts multipart FormData (fields + file
     // part `logo` or `image`, JPEG/PNG/WEBP/AVIF ≤3MB → Cloudinary logoUrl).
     // NOTE: send ONLY the file part — do NOT also append a `logo` text field
@@ -1789,6 +2207,28 @@ export const hostelGhar = {
     },
     assignOwner: (hostelId: string, payload: { ownerId: string }) =>
       api.put<Hostel>(`${PREFIX}/admin/hostels/${hostelId}/owner`, payload),
+    /**
+     * Suspend a hostel (SUPER_ADMIN). Backend: POST /admin/hostels/:id/suspend.
+     * Blocking owner logins + resident payments is enforced server-side.
+     */
+    suspendHostel: (hostelId: string) =>
+      api.post(`${PREFIX}/admin/hostels/${hostelId}/suspend`, {}),
+    /**
+     * Re-activate a suspended hostel (SUPER_ADMIN).
+     * Tries POST /admin/hostels/:id/activate, falls back to
+     * PATCH /admin/hostels/:id { status: "ACTIVE" } for older backends.
+     */
+    activateHostel: async (hostelId: string) => {
+      try {
+        return await api.post(`${PREFIX}/admin/hostels/${hostelId}/activate`, {});
+      } catch (e) {
+        const s = (e as { response?: { status?: number } })?.response?.status ?? 0;
+        if (s === 404 || s === 405) {
+          return api.patch(`${PREFIX}/admin/hostels/${hostelId}`, { status: "ACTIVE" });
+        }
+        throw e;
+      }
+    },
     createOwner: (payload: CreateOwnerPayload, imageFile?: File) => {
       if (!imageFile) return api.post<Owner>(`${PREFIX}/admin/owners`, payload);
       const form = new FormData();

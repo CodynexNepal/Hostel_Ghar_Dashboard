@@ -10,6 +10,8 @@ export interface Resident {
   roomNumber: string;
   bedNumber: string;
   floor: number;
+  /** Room occupancy type from the backend (SINGLE/DOUBLE/TRIPLE/…); optional. */
+  roomType?: string;
   paymentStatus: PaymentStatus;
   status: ResidentStatus;
   joinedDate: string;

@@ -19,8 +19,10 @@
  *       NEXT_PUBLIC_PLATFORM_ESEWA_LABEL="eSewa ID: 98XXXXXXXX • Hostel Ghar"
  *       NEXT_PUBLIC_PLATFORM_KHALTI_LABEL="Khalti ID: 98XXXXXXXX • Hostel Ghar"
  *       NEXT_PUBLIC_PLATFORM_BANK_LABEL="Nabil Bank • A/C 0123456789 • Hostel Ghar Pvt. Ltd."
- *  3. Until real images exist, the UI renders a branded placeholder panel
- *     (never a broken <img>) so owners still see account details + steps.
+ *  3. OR upload from the admin dashboard: `/admin/settings` → Platform QRs.
+ *     Admin uploads are stored in localStorage (`hg_platform_qr_*`) and take
+ *     precedence over the static files above, so owners see them instantly
+ *     on `/subscription` without a redeploy.
  */
 import type { SubscriptionPaymentMethod } from "@/lib/api-types";
 
@@ -34,6 +36,8 @@ export interface PlatformQrEntry {
   label: string;
   /** Short hint shown in the pay step. */
   hint: string;
+  /** Where the resolved src came from — for the admin "source" badge. */
+  source?: "upload" | "env" | "file";
 }
 
 function envOr(path: string, key: string): string {
@@ -69,20 +73,43 @@ const HINT: Record<PlatformQrMethod, string> = {
 
 export const PLATFORM_QR_METHODS: PlatformQrMethod[] = ["ESEWA", "KHALTI", "BANK"];
 
+const ENV_SRC_KEY: Record<PlatformQrMethod, string> = {
+  ESEWA: "NEXT_PUBLIC_PLATFORM_ESEWA_QR",
+  KHALTI: "NEXT_PUBLIC_PLATFORM_KHALTI_QR",
+  BANK: "NEXT_PUBLIC_PLATFORM_BANK_QR",
+};
+
+const ENV_LABEL_KEY: Record<PlatformQrMethod, string> = {
+  ESEWA: "NEXT_PUBLIC_PLATFORM_ESEWA_LABEL",
+  KHALTI: "NEXT_PUBLIC_PLATFORM_KHALTI_LABEL",
+  BANK: "NEXT_PUBLIC_PLATFORM_BANK_LABEL",
+};
+
+const LS_QR_KEY = (m: PlatformQrMethod) => `hg_platform_qr_${m.toLowerCase()}`;
+const LS_LABEL_KEY = (m: PlatformQrMethod) => `hg_platform_qr_label_${m.toLowerCase()}`;
+export const PLATFORM_QR_EVENT = "platform_qr_changed";
+export const PLATFORM_QR_MAX_BYTES = 4 * 1024 * 1024;
+
+function readLs(key: string): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const v = window.localStorage.getItem(key);
+    return v && v.trim() ? v : null;
+  } catch {
+    return null;
+  }
+}
+
 export function getPlatformQr(method: PlatformQrMethod): PlatformQrEntry {
-  const src =
-    method === "ESEWA"
-      ? envOr(DEFAULT_SRC.ESEWA, "NEXT_PUBLIC_PLATFORM_ESEWA_QR")
-      : method === "KHALTI"
-        ? envOr(DEFAULT_SRC.KHALTI, "NEXT_PUBLIC_PLATFORM_KHALTI_QR")
-        : envOr(DEFAULT_SRC.BANK, "NEXT_PUBLIC_PLATFORM_BANK_QR");
-  const label =
-    method === "ESEWA"
-      ? labelOr(DEFAULT_LABEL.ESEWA, "NEXT_PUBLIC_PLATFORM_ESEWA_LABEL")
-      : method === "KHALTI"
-        ? labelOr(DEFAULT_LABEL.KHALTI, "NEXT_PUBLIC_PLATFORM_KHALTI_LABEL")
-        : labelOr(DEFAULT_LABEL.BANK, "NEXT_PUBLIC_PLATFORM_BANK_LABEL");
-  return { method, src, label, hint: HINT[method] };
+  const uploaded = readLs(LS_QR_KEY(method));
+  const uploadedLabel = readLs(LS_LABEL_KEY(method));
+  const envSrc = envOr(DEFAULT_SRC[method], ENV_SRC_KEY[method]);
+  const envIsCustom = envSrc !== DEFAULT_SRC[method];
+  const label = uploadedLabel ?? labelOr(DEFAULT_LABEL[method], ENV_LABEL_KEY[method]);
+  if (uploaded) {
+    return { method, src: uploaded, label, hint: HINT[method], source: "upload" };
+  }
+  return { method, src: envSrc, label, hint: HINT[method], source: envIsCustom ? "env" : "file" };
 }
 
 export function getPlatformQrs(): PlatformQrEntry[] {
@@ -91,4 +118,40 @@ export function getPlatformQrs(): PlatformQrEntry[] {
 
 export function platformMethodLabel(method: PlatformQrMethod): string {
   return method === "ESEWA" ? "eSewa" : method === "KHALTI" ? "Khalti" : "Bank";
+}
+
+/** Persist an admin-uploaded QR (data-URL) + label. Fires a reactive event. */
+export function savePlatformQr(method: PlatformQrMethod, src: string, label: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (src) window.localStorage.setItem(LS_QR_KEY(method), src);
+    else window.localStorage.removeItem(LS_QR_KEY(method));
+    if (label.trim()) window.localStorage.setItem(LS_LABEL_KEY(method), label.trim());
+    else window.localStorage.removeItem(LS_LABEL_KEY(method));
+    window.dispatchEvent(new CustomEvent(PLATFORM_QR_EVENT, { detail: { method } }));
+  } catch {
+    throw new Error("Browser storage is full. Try a smaller image (under 2 MB).");
+  }
+}
+
+/** Remove an admin-uploaded QR, falling back to file/env config. */
+export function removePlatformQr(method: PlatformQrMethod): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(LS_QR_KEY(method));
+    window.localStorage.removeItem(LS_LABEL_KEY(method));
+    window.dispatchEvent(new CustomEvent(PLATFORM_QR_EVENT, { detail: { method } }));
+  } catch {
+    /* noop */
+  }
+}
+
+/** Read a File as a data-URL (for instant preview + localStorage persist). */
+export function fileToPlatformQrDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Couldn't read that image."));
+    reader.onload = () => resolve(String(reader.result ?? ""));
+    reader.readAsDataURL(file);
+  });
 }

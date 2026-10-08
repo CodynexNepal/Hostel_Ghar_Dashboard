@@ -1,4 +1,4 @@
-import type { AdminSummary } from "./api-types";
+import type { AdminSummaryWithCounts } from "./hostelGhar";
 import type { Hostel } from "../types/hostel";
 import type { SubscriptionRequest } from "./api-types";
 
@@ -11,7 +11,7 @@ export interface AdminPendingApproval extends SubscriptionRequest {}
  * UI must still render (missing = "—" / empty list, never a crash).
  */
 export interface AdminDashboardData {
-  summary: AdminSummary | null;
+  summary: AdminSummaryWithCounts | null;
   summaryError: string | null;
   hostels: Hostel[];
   hostelsError: string | null;

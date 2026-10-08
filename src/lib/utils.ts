@@ -17,6 +17,18 @@ export function formatDate(iso?: string | null): string {
   return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 }
 
+export function formatDateTime(iso?: string | null): string {
+  if (!iso || typeof iso !== "string") return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleString("en-GB", {
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 export function initials(name?: string | null): string {
   if (!name || typeof name !== "string") return "HG";
   const trimmed = name.trim();

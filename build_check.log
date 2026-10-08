@@ -1,0 +1,70 @@
+
+> hostel-ghar-dashboard@1.0.0 build
+> next build
+
+   ▲ Next.js 15.5.25
+   - Environments: .env.local
+
+   Creating an optimized production build ...
+ ✓ Compiled successfully in 9.6s
+   Linting and checking validity of types ...
+   Collecting page data ...
+   Generating static pages (0/41) ...
+   Generating static pages (10/41) 
+   Generating static pages (20/41) 
+   Generating static pages (30/41) 
+ ✓ Generating static pages (41/41)
+   Finalizing page optimization ...
+   Collecting build traces ...
+
+Route (app)                                 Size  First Load JS
+┌ ○ /                                      140 B         103 kB
+├ ○ /_not-found                            140 B         103 kB
+├ ○ /admin                               8.87 kB         177 kB
+├ ○ /admin/analytics                       193 B         175 kB
+├ ○ /admin/hostels                       8.43 kB         177 kB
+├ ○ /admin/owners                          187 B         174 kB
+├ ○ /admin/payments                        193 B         175 kB
+├ ○ /admin/residents                     8.73 kB         177 kB
+├ ○ /admin/settings                        193 B         175 kB
+├ ○ /admin/subscriptions                  4.7 kB         177 kB
+├ ○ /analytics                           17.9 kB         186 kB
+├ ƒ /api/staff                             140 B         103 kB
+├ ƒ /api/staff/[id]                        140 B         103 kB
+├ ○ /beds                                8.58 kB         177 kB
+├ ○ /dashboard                           10.6 kB         179 kB
+├ ○ /expenses                            5.13 kB         179 kB
+├ ○ /fees                                6.92 kB         185 kB
+├ ○ /hostel                              6.55 kB         175 kB
+├ ○ /hostel/facilities                   9.43 kB         201 kB
+├ ○ /invoices                            7.04 kB         175 kB
+├ ○ /leaves                              4.76 kB         173 kB
+├ ƒ /leaves/hostels/[hostelId]           7.15 kB         175 kB
+├ ○ /leaves/types                        10.3 kB         178 kB
+├ ○ /login                               4.17 kB         190 kB
+├ ○ /register                            2.64 kB         183 kB
+├ ○ /reports                             7.27 kB         175 kB
+├ ○ /resident                            4.99 kB         176 kB
+├ ○ /resident/announcements              2.26 kB         173 kB
+├ ○ /resident/facilities                 3.57 kB         175 kB
+├ ○ /resident/history                    2.99 kB         178 kB
+├ ○ /resident/leaves                      6.5 kB         178 kB
+├ ○ /resident/payments                   5.68 kB         191 kB
+├ ○ /resident/profile                    3.65 kB         175 kB
+├ ○ /resident/room                        3.7 kB         175 kB
+├ ○ /residents                           7.83 kB         176 kB
+├ ○ /residents/add                       8.06 kB         200 kB
+├ ○ /residents/import                    8.85 kB         177 kB
+├ ○ /rooms                               10.7 kB         203 kB
+├ ○ /settings                            6.46 kB         184 kB
+├ ○ /staff                               11.2 kB         179 kB
+└ ○ /subscription                        7.42 kB         182 kB
++ First Load JS shared by all             103 kB
+  ├ chunks/1255-7316b50163a428e6.js      46.4 kB
+  ├ chunks/4bd1b696-f785427dddbba9fb.js  54.2 kB
+  └ other shared chunks (total)          2.02 kB
+
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+

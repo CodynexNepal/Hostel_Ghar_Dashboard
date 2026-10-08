@@ -23,7 +23,7 @@ import { AdminKpiCards, type AdminKpi } from "@/components/admin/AdminKpiCards";
 import { AdminActionsGrid, type AdminAction } from "@/components/admin/AdminActionsGrid";
 import { AdminHostelsSpotlight } from "@/components/admin/AdminHostelsSpotlight";
 import { AdminApprovalsQueue } from "@/components/admin/AdminApprovalsQueue";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, formatDateTime } from "@/lib/utils";
 
 function num(v: unknown): number | null {
   const n = typeof v === "string" ? Number(v) : typeof v === "number" ? v : NaN;
@@ -34,38 +34,48 @@ export default function SuperAdminPage() {
   const dash = useAdminDashboard();
   const { summary, isLoading, isRefetching, refetch, isLive, summaryError } = dash;
 
-  const totalHostels = num(summary?.totalHostels) ?? dash.hostels.length ?? null;
-  const totalResidents = num(summary?.totalResidents);
-  const mrr = num(summary?.mrr ?? summary?.monthlyRevenue) ?? 0;
-  const activePlans = summary?.activePlans != null ? String(summary.activePlans) : null;
+  const totalHostels = num(summary?.totalHostels) ?? (dash.hostels.length || null);
+  const totalResidents = num(summary?.totalResidents ?? summary?.activeResidents);
+  const mrr = num(summary?.mrr) ?? 0;
+  const activePlans = num(summary?.stats?.mrrPaidPlans ?? summary?.activePlans);
   const occupancy = num(summary?.occupancyRate);
+  const users = num(summary?.users);
 
   const kpis: AdminKpi[] = [
     {
       label: "Total Hostels",
       value: totalHostels != null ? String(totalHostels) : "—",
-      hint: "platform-wide",
+      hint: users != null ? `${users} registered users` : "platform-wide",
       icon: Building2,
       accent: "bg-brand",
     },
     {
-      label: "Total Residents",
+      label: "Active Residents",
       value: totalResidents != null ? totalResidents.toLocaleString("en-NP") : "—",
-      hint: "all hostels",
+      hint: (() => {
+        const pending = num(summary?.pendingBookings);
+        return pending != null && pending > 0 ? `${pending} pending bookings` : "all hostels";
+      })(),
       icon: Users,
       accent: "bg-blue-500",
     },
     {
       label: "MRR",
       value: formatCurrency(mrr),
-      hint: activePlans ? `${activePlans} paid plans` : "recurring revenue",
+      hint:
+        activePlans != null
+          ? `${activePlans} paid plans`
+          : (summary?.mrrBasis ?? "recurring revenue"),
       icon: Wallet,
       accent: "bg-emerald-500",
     },
     {
       label: "Occupancy",
       value: occupancy != null ? `${occupancy}%` : "—",
-      hint: "beds occupied",
+      hint:
+        summary?.totalBeds != null
+          ? `${summary.occupiedBeds ?? 0} / ${summary.totalBeds} beds used`
+          : "beds occupied",
       icon: BarChart3,
       accent: "bg-violet-500",
     },
@@ -120,7 +130,7 @@ export default function SuperAdminPage() {
     },
     {
       label: "Platform QRs",
-      desc: "Hostel Ghar payment QRs",
+      desc: "Upload subscription payment QRs",
       href: "/admin/settings",
       icon: Wallet,
       accent: "bg-teal-600",
@@ -133,6 +143,16 @@ export default function SuperAdminPage() {
       accent: "bg-neutral-700",
     },
   ];
+
+  function formatDateTime(generatedAt: string): import("react").ReactNode {
+    const date = new Date(generatedAt);
+    if (Number.isNaN(date.getTime())) return generatedAt;
+
+    return new Intl.DateTimeFormat(undefined, {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(date);
+  }
 
   return (
     <DashboardShell title="Platform Overview" subtitle="All hostels, owners, revenue and health.">
@@ -149,14 +169,24 @@ export default function SuperAdminPage() {
               </Button>
             </div>
           )}
-          <div className="flex items-center justify-between gap-2">
-            <p className="flex items-center gap-1.5 text-xs text-neutral-500">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="flex flex-wrap items-center gap-1.5 text-xs text-neutral-500">
               <LayoutDashboard className="h-3.5 w-3.5" aria-hidden />
               {isRefetching ? "Refreshing…" : isLive ? "Live from backend" : "Waiting for backend"}
               <span
                 className={`inline-block h-1.5 w-1.5 rounded-full ${isLive ? "bg-emerald-500" : "bg-amber-400"}`}
                 aria-hidden
               />
+              {summary?.generatedAt && (
+                <span className="text-neutral-400">
+                  · Updated {formatDateTime(summary.generatedAt)}
+                </span>
+              )}
+              {summary?.cacheLevel && (
+                <span className="rounded-full bg-surface-muted px-2 py-0.5 text-[11px] font-medium text-neutral-500">
+                  Cache {summary.cacheLevel}
+                </span>
+              )}
             </p>
             <Button size="sm" variant="ghost" onClick={refetch} className="text-xs">
               <RefreshCw className="h-3.5 w-3.5" /> Refresh
@@ -191,11 +221,41 @@ export default function SuperAdminPage() {
               {[
                 {
                   t: "Monthly revenue",
-                  v: formatCurrency(num(summary?.monthlyRevenue ?? summary?.mrr) ?? 0),
+                  v: formatCurrency(
+                    num(summary?.health?.monthlyRevenue ?? summary?.monthlyRevenue) ?? 0
+                  ),
                 },
-                { t: "Total revenue", v: formatCurrency(num(summary?.totalRevenue) ?? 0) },
-                { t: "Pending dues", v: formatCurrency(num(summary?.pendingAmount) ?? 0) },
-                { t: "Rooms", v: summary?.totalRooms != null ? String(summary.totalRooms) : "—" },
+                {
+                  t: "Total revenue",
+                  v: formatCurrency(
+                    num(summary?.health?.totalRevenue ?? summary?.totalRevenue) ?? 0
+                  ),
+                },
+                {
+                  t: "Pending dues",
+                  v: formatCurrency(
+                    num(summary?.health?.pendingDues ?? summary?.pendingAmount) ?? 0
+                  ),
+                },
+                {
+                  t: "Collected",
+                  v: formatCurrency(num(summary?.paidAmount) ?? 0),
+                },
+                {
+                  t: "Outstanding",
+                  v: formatCurrency(num(summary?.outstandingAmount) ?? 0),
+                },
+                {
+                  t: "Unpaid fees",
+                  v: (num(summary?.unpaidFees) ?? 0).toLocaleString("en-NP"),
+                },
+                {
+                  t: "Rooms",
+                  v:
+                    (summary?.health?.rooms ?? summary?.totalRooms != null)
+                      ? String(summary?.health?.rooms ?? summary?.totalRooms)
+                      : "—",
+                },
                 {
                   t: "Beds occupied",
                   v:
@@ -203,7 +263,13 @@ export default function SuperAdminPage() {
                       ? `${summary.occupiedBeds}${summary?.totalBeds ? ` / ${summary.totalBeds}` : ""}`
                       : "—",
                 },
-                { t: "Active plans", v: activePlans ?? "—" },
+                {
+                  t: "Collection rate",
+                  v:
+                    num(summary?.health?.collectionRate ?? summary?.collectionRate) != null
+                      ? `${num(summary?.health?.collectionRate ?? summary?.collectionRate)}%`
+                      : "—",
+                },
               ].map((s) => (
                 <div key={s.t} className="rounded-lg bg-surface-muted px-3.5 py-3">
                   <p className="text-xs text-neutral-500">{s.t}</p>

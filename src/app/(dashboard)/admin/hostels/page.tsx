@@ -3,13 +3,14 @@ import { useEffect, useRef, useState } from "react";
 import { DashboardShell } from "@/components/layout/DashboardShell";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { BackLink } from "@/components/ui/BackLink";
-import { Badge } from "@/components/ui/Badge";
+import { Badge, statusTone } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { Modal } from "@/components/ui/Modal";
 import type { Hostel } from "@/types/hostel";
 import { useToast } from "@/hooks/useToast";
 import { useApi } from "@/hooks/useApi";
-import { hostelGhar, toApiError, toPaginated } from "@/lib/hostelGhar";
+import { hostelGhar, normalizeHostelList, toApiError } from "@/lib/hostelGhar";
 import { TableSkeleton } from "@/components/ui/Skeleton";
 import { EmptyState, ErrorState } from "@/components/ui/EmptyState";
 import { Input } from "@/components/ui/Input";
@@ -28,7 +29,10 @@ export default function AdminHostelsPage() {
   const { success, error: toastError } = useToast();
   const { data, error, isLoading, refetch } = useApi(async () => {
     const res = await hostelGhar.admin.listHostels();
-    return toPaginated<Hostel>(res.data).items;
+    // The backend sends `rooms` / `beds` / `occupied` and a nested `owner`
+    // object; normalizeHostel maps those onto the `Hostel` shape the table
+    // renders (otherwise the columns show `undefined`).
+    return normalizeHostelList(res.data);
   }, []);
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -37,7 +41,14 @@ export default function AdminHostelsPage() {
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const logoRef = useRef<HTMLInputElement | null>(null);
-  const hostels = data ?? [];
+  const [statusTarget, setStatusTarget] = useState<Hostel | null>(null);
+  const [isToggling, setIsToggling] = useState(false);
+  // Optimistic status overrides — applied instantly on suspend/activate so the
+  // badge flips even before (or if) the list refetch returns the new row.
+  const [statusOverride, setStatusOverride] = useState<Record<string, Hostel["status"]>>({});
+  const hostels = (data ?? []).map((h) =>
+    statusOverride[h.id] ? { ...h, status: statusOverride[h.id] } : h
+  );
 
   useEffect(() => {
     if (!logoFile) {
@@ -109,6 +120,48 @@ export default function AdminHostelsPage() {
     }
   }
 
+  async function confirmStatusChange() {
+    if (!statusTarget) return;
+    const suspending = statusTarget.status === "ACTIVE";
+    const next = suspending ? "SUSPENDED" : "ACTIVE";
+    setIsToggling(true);
+    try {
+      const res = suspending
+        ? await hostelGhar.admin.suspendHostel(statusTarget.id)
+        : await hostelGhar.admin.activateHostel(statusTarget.id);
+      // Trust the backend echo when it carries the hostel (suspend returns the
+      // updated row); otherwise fall back to our intended state so the badge
+      // flips instantly even if the list refetch is cached/slow.
+      let applied: Hostel["status"] = next;
+      try {
+        const echoed = normalizeHostelList(res?.data);
+        const match = echoed.find((h) => h.id === statusTarget.id);
+        if (match && (match.status === "ACTIVE" || match.status === "SUSPENDED")) {
+          applied = match.status;
+        }
+      } catch {
+        /* keep intended state */
+      }
+      success(
+        applied === "SUSPENDED" ? "Hostel suspended" : "Hostel re-activated",
+        `${statusTarget.name} is now ${applied}.`
+      );
+      setStatusTarget(null);
+      // Flip the badge instantly; the refetch below then confirms it.
+      setStatusOverride((prev) => ({ ...prev, [statusTarget.id]: applied }));
+      try {
+        await refetch();
+      } catch {
+        /* list keeps optimistic badge below — non-fatal */
+      }
+      void applied;
+    } catch (err) {
+      toastError("Status change failed", toApiError(err).message);
+    } finally {
+      setIsToggling(false);
+    }
+  }
+
   const columns: Column<Hostel>[] = [
     {
       key: "name",
@@ -138,46 +191,119 @@ export default function AdminHostelsPage() {
         );
       },
     },
-    { key: "ownerName", header: "Owner", sortable: true, render: (hostel) => hostel.ownerName },
+    {
+      key: "ownerName",
+      header: "Owner",
+      sortable: true,
+      render: (hostel) => {
+        const owner = hostel.owner;
+        const name = hostel.ownerName ?? "No owner";
+        if (!owner) return <span className="text-xs text-neutral-400">No owner assigned</span>;
+        return (
+          <span className="flex min-w-0 items-center gap-2">
+            {owner.avatarUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={owner.avatarUrl}
+                alt={`${name} avatar`}
+                className="h-7 w-7 shrink-0 rounded-full object-cover"
+              />
+            ) : null}
+            <span className="min-w-0">
+              <span className="block truncate font-medium">{name}</span>
+              <span className="block truncate text-xs text-neutral-500">
+                {owner.phone ?? owner.email ?? "—"}
+              </span>
+            </span>
+          </span>
+        );
+      },
+    },
     {
       key: "occupiedBeds",
       header: "Occupancy",
       sortable: true,
-      render: (hostel) => `${hostel.occupiedBeds}/${hostel.totalBeds}`,
+      render: (hostel) => {
+        const occupied = hostel.occupiedBeds;
+        const total = hostel.totalBeds;
+        if (total == null) return <span>{occupied}</span>;
+        if (total <= 0) return <span className="text-xs text-neutral-400">No beds</span>;
+        const pct = Math.round((occupied / total) * 100);
+        // `occupied` can exceed `beds` when the backend counts residents rather
+        // than filled beds — the bar width is clamped so it never overflows.
+        const tone = pct >= 100 ? "bg-amber-500" : pct >= 75 ? "bg-brand" : "bg-emerald-500";
+        return (
+          <span className="block min-w-[92px]">
+            <span className="flex items-baseline gap-1 text-sm">
+              <span className="font-semibold text-neutral-900">{occupied}</span>
+              <span className="text-xs text-neutral-500">/ {total} beds</span>
+              {occupied > total && (
+                <span className="text-[10px] font-semibold uppercase text-amber-700">over</span>
+              )}
+            </span>
+            <span className="mt-1 block h-1.5 w-full overflow-hidden rounded-full bg-neutral-100">
+              <span
+                className={`block h-full rounded-full ${tone}`}
+                style={{ width: `${Math.min(100, pct)}%` }}
+              />
+            </span>
+          </span>
+        );
+      },
+    },
+    {
+      key: "type",
+      header: "Type",
+      sortable: true,
+      render: (hostel) =>
+        hostel.type ? (
+          <Badge tone={hostel.type === "GIRLS" ? "blue" : "gray"}>{hostel.type}</Badge>
+        ) : (
+          <span className="text-xs text-neutral-400">—</span>
+        ),
     },
     {
       key: "status",
       header: "Status",
       sortable: true,
-      render: (hostel) => (
-        <Badge tone={hostel.status === "ACTIVE" ? "green" : "amber"}>{hostel.status}</Badge>
-      ),
+      render: (hostel) => <Badge tone={statusTone(hostel.status)}>{hostel.status}</Badge>,
     },
     {
       key: "actions",
       header: "Actions",
-      render: (hostel) => (
-        <span className="flex gap-1">
-          <Button size="sm" variant="outline" onClick={() => success("Hostel opened", hostel.name)}>
-            View
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            aria-label={`Status of ${hostel.name}`}
-            title="Suspend is enforced by backend admin API."
-            onClick={() =>
-              toastError("Status change unavailable", "Use the backend admin API to suspend.")
-            }
-          >
-            {hostel.status === "ACTIVE" ? (
-              <Ban className="h-4 w-4 text-red-600" />
-            ) : (
-              <CheckCircle2 className="h-4 w-4 text-green-700" />
-            )}
-          </Button>
-        </span>
-      ),
+      render: (hostel) => {
+        const suspending = hostel.status === "ACTIVE";
+        return (
+          <span className="flex gap-1">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => success("Hostel opened", hostel.name)}
+            >
+              View
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              aria-label={`${suspending ? "Suspend" : "Re-activate"} ${hostel.name}`}
+              title={
+                suspending
+                  ? "Suspend hostel (blocks owner logins)"
+                  : hostel.status === "SUSPENDED"
+                    ? "Re-activate hostel"
+                    : "Activate hostel"
+              }
+              onClick={() => setStatusTarget(hostel)}
+            >
+              {suspending ? (
+                <Ban className="h-4 w-4 text-red-600" />
+              ) : (
+                <CheckCircle2 className="h-4 w-4 text-green-700" />
+              )}
+            </Button>
+          </span>
+        );
+      },
     },
   ];
 
@@ -338,11 +464,24 @@ export default function AdminHostelsPage() {
             <div className="flex items-center gap-3">
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm font-semibold">{hostel.name}</span>
-                <span className="block text-xs text-neutral-500">
-                  {hostel.ownerName} · {hostel.occupiedBeds}/{hostel.totalBeds}
+                <span className="block truncate text-xs text-neutral-500">
+                  {hostel.address || hostel.city}
                 </span>
+                <span className="block truncate text-xs text-neutral-500">
+                  {hostel.ownerName ?? "No owner"}
+                  {hostel.owner?.phone ? ` · ${hostel.owner.phone}` : ""} ·{" "}
+                  {hostel.totalBeds != null
+                    ? `${hostel.occupiedBeds}/${hostel.totalBeds} beds`
+                    : `${hostel.occupiedBeds} beds`}
+                </span>
+                {hostel.city ? (
+                  <span className="block truncate text-xs text-neutral-400">
+                    {hostel.city}
+                    {hostel.type ? ` · ${hostel.type}` : ""}
+                  </span>
+                ) : null}
               </span>
-              <Badge tone={hostel.status === "ACTIVE" ? "green" : "amber"}>{hostel.status}</Badge>
+              <Badge tone={statusTone(hostel.status)}>{hostel.status}</Badge>
             </div>
           )}
         />
@@ -351,6 +490,56 @@ export default function AdminHostelsPage() {
         Suspending a hostel immediately blocks owner logins and resident payments — backend enforces
         authorization on every request.
       </Card>
+      <Modal
+        open={statusTarget !== null}
+        onClose={() => setStatusTarget(null)}
+        title={
+          statusTarget
+            ? statusTarget.status === "ACTIVE"
+              ? `Suspend ${statusTarget.name}?`
+              : `Re-activate ${statusTarget.name}?`
+            : undefined
+        }
+        description={
+          statusTarget
+            ? statusTarget.status === "ACTIVE"
+              ? "Owner logins and resident payments for this hostel will be blocked immediately."
+              : "The hostel returns to ACTIVE and owners can log in again."
+            : undefined
+        }
+      >
+        {statusTarget && (
+          <div className="space-y-4">
+            <p className="flex items-center gap-2 text-sm text-neutral-600">
+              <Badge tone={statusTone(statusTarget.status)}>{statusTarget.status}</Badge>
+              <span aria-hidden>→</span>
+              <Badge tone={statusTarget.status === "ACTIVE" ? "red" : "green"}>
+                {statusTarget.status === "ACTIVE" ? "SUSPENDED" : "ACTIVE"}
+              </Badge>
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setStatusTarget(null)} disabled={isToggling}>
+                Cancel
+              </Button>
+              <Button
+                variant={statusTarget.status === "ACTIVE" ? "danger" : "primary"}
+                onClick={confirmStatusChange}
+                loading={isToggling}
+              >
+                {statusTarget.status === "ACTIVE" ? (
+                  <>
+                    <Ban className="h-4 w-4" /> Suspend hostel
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="h-4 w-4" /> Re-activate
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </DashboardShell>
   );
 }

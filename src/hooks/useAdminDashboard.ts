@@ -1,11 +1,42 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { hostelGhar, normalizeSubscriptionRequests, toPaginated, unwrap } from "@/lib/hostelGhar";
+import {
+  hostelGhar,
+  normalizeAdminSummary,
+  normalizeHostelList,
+  normalizeSubscriptionRequests,
+  toPaginated,
+  type AdminSummaryWithCounts,
+} from "@/lib/hostelGhar";
 import { toApiError } from "@/lib/axios";
-import type { AdminSummary, SubscriptionRequest } from "@/lib/api-types";
+import type { SubscriptionRequest } from "@/lib/api-types";
 import type { Hostel } from "@/types/hostel";
 import type { AdminDashboardData } from "@/lib/admin-dashboard-types";
+import type { AdminRecentHostel } from "@/lib/api-types";
+
+/**
+ * Project a summary `recentHostels` row onto the full `Hostel` shape the
+ * spotlight renders. The summary payload omits rooms/beds/status, so those
+ * fields get neutral placeholders and unknown values stay null.
+ */
+function toSpotlightHostel(h: AdminRecentHostel): Hostel {
+  return {
+    id: h.id,
+    name: h.name,
+    type: h.type,
+    address: "",
+    city: h.city ?? "",
+    phone: "",
+    email: h.owner?.email ?? "",
+    totalRooms: 0,
+    totalBeds: null,
+    occupiedBeds: 0,
+    status: "ACTIVE",
+    ownerName: h.owner?.name ?? null,
+    logoUrl: h.logoUrl ?? null,
+  };
+}
 
 const INITIAL: AdminDashboardData = {
   summary: null,
@@ -43,11 +74,13 @@ export function useAdminDashboard() {
         hostelGhar.subscriptions.requests({ status: "PENDING", limit: 5 }),
       ]);
 
-      let summary: AdminSummary | null = null;
+      let summary: AdminSummaryWithCounts | null = null;
       let summaryError: string | null = null;
       if (summaryRes.status === "fulfilled") {
         try {
-          summary = unwrap<AdminSummary>(summaryRes.value.data) ?? null;
+          // `normalizeAdminSummary` flattens the nested `stats` / `health` /
+          // `pendingApprovals` blocks into the flat keys the page renders.
+          summary = normalizeAdminSummary(summaryRes.value.data) ?? null;
         } catch (e) {
           summaryError = toApiError(e).message;
         }
@@ -59,12 +92,18 @@ export function useAdminDashboard() {
       let hostelsError: string | null = null;
       if (hostelsRes.status === "fulfilled") {
         try {
-          hostels = toPaginated<Hostel>(hostelsRes.value.data).items;
+          hostels = normalizeHostelList(hostelsRes.value.data);
         } catch (e) {
           hostelsError = toApiError(e).message;
         }
       } else {
         hostelsError = toApiError(hostelsRes.reason).message;
+      }
+      // The summary ships a lightweight `recentHostels` array — use it as a
+      // fallback so the spotlight still renders when /admin/hostels fails.
+      if (hostels.length === 0 && summary?.recentHostels?.length) {
+        hostels = summary.recentHostels.map(toSpotlightHostel);
+        hostelsError = null;
       }
 
       let pendingApprovals: SubscriptionRequest[] = [];
@@ -80,6 +119,12 @@ export function useAdminDashboard() {
         }
       } else {
         approvalsError = toApiError(approvalsRes.reason).message;
+      }
+      // `data.pendingApprovals.count` is authoritative even when the queue
+      // endpoint errors out, so the badge still reflects reality.
+      const summaryApprovalCount = summary?.pendingApprovals?.count;
+      if (pendingTotal === null && summaryApprovalCount != null) {
+        pendingTotal = summaryApprovalCount;
       }
 
       setData({

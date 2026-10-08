@@ -122,13 +122,11 @@ export function MovementSection({ base }: { base: AnalyticsBase }) {
       />
       <div className="mt-2">
         <HBarList
-          rows={data
-            .slice(-4)
-            .map((d) => ({
-              label: d.label,
-              value: d.collected,
-              sub: `of ${formatCurrency(d.billed)}`,
-            }))}
+          rows={data.slice(-4).map((d) => ({
+            label: d.label,
+            value: d.collected,
+            sub: `of ${formatCurrency(d.billed)}`,
+          }))}
           formatV={(v) => formatCurrency(v)}
         />
       </div>

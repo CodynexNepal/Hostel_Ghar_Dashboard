@@ -1,12 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import { Copy, Download, QrCode } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { useToast } from "@/hooks/useToast";
 import { formatCurrency } from "@/lib/utils";
-import { getPlatformQr, platformMethodLabel, type PlatformQrMethod } from "@/lib/platform-qr";
+import {
+  PLATFORM_QR_EVENT,
+  getPlatformQr,
+  platformMethodLabel,
+  type PlatformQrMethod,
+} from "@/lib/platform-qr";
 import type { SubscriptionPaymentMethod } from "@/lib/api-types";
 
 interface Props {
@@ -25,6 +30,21 @@ export function PlatformQrPanel({ amount, cycleLabel, planName, method }: Props)
   const [copied, setCopied] = useState(false);
   const [imgFailed, setImgFailed] = useState(false);
   const isQr = method === "ESEWA" || method === "KHALTI" || method === "BANK";
+  const [qrVersion, setQrVersion] = useState(0);
+  useEffect(() => {
+    setImgFailed(false);
+    const bump = () => {
+      setQrVersion((v) => v + 1);
+      setImgFailed(false);
+    };
+    window.addEventListener(PLATFORM_QR_EVENT, bump);
+    window.addEventListener("storage", bump);
+    return () => {
+      window.removeEventListener(PLATFORM_QR_EVENT, bump);
+      window.removeEventListener("storage", bump);
+    };
+  }, [method]);
+  void qrVersion;
   const qr = isQr ? getPlatformQr(method as PlatformQrMethod) : null;
 
   if (!qr) {
@@ -56,6 +76,7 @@ export function PlatformQrPanel({ amount, cycleLabel, planName, method }: Props)
 
   // Reset the broken-image fallback whenever the QR source changes.
   const qrKey = `${qr.method}:${qr.src}`;
+  const isDataUrl = qr.src.startsWith("data:");
 
   return (
     <div className="overflow-hidden rounded-xl border border-surface-border">
@@ -71,15 +92,25 @@ export function PlatformQrPanel({ amount, cycleLabel, planName, method }: Props)
       <div className="flex items-start gap-3 bg-white px-3 py-3 sm:gap-3.5 sm:px-3.5">
         <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-lg border border-surface-border bg-surface-muted sm:h-28 sm:w-28">
           {!imgFailed ? (
-            <Image
-              key={qrKey}
-              src={qr.src}
-              alt={`Hostel Ghar ${platformMethodLabel(qr.method)} payment QR`}
-              fill
-              sizes="112px"
-              className="object-contain p-1"
-              onError={() => setImgFailed(true)}
-            />
+            isDataUrl ? (
+              <img
+                key={qrKey}
+                src={qr.src}
+                alt={`Hostel Ghar ${platformMethodLabel(qr.method)} payment QR`}
+                className="h-full w-full object-contain p-1"
+                onError={() => setImgFailed(true)}
+              />
+            ) : (
+              <Image
+                key={qrKey}
+                src={qr.src}
+                alt={`Hostel Ghar ${platformMethodLabel(qr.method)} payment QR`}
+                fill
+                sizes="112px"
+                className="object-contain p-1"
+                onError={() => setImgFailed(true)}
+              />
+            )
           ) : (
             <div className="flex h-full w-full flex-col items-center justify-center gap-1 p-2 text-center">
               <QrCode className="h-5 w-5 text-neutral-400" aria-hidden />

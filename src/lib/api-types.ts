@@ -733,10 +733,79 @@ export interface OwnerDashboardHostel {
   residentsOnLeaveToday?: string | number;
 }
 
-export interface AdminSummary {
+export interface AdminSummaryOccupancy {
+  totalBeds?: number;
+  occupiedBeds?: number;
+  availableBeds?: number;
+  /** Backend sends a 0–1 fraction; the UI renders a 0–100 percentage. */
+  rate?: number;
+}
+
+/** `data.stats` block of GET /analytics/admin/summary. */
+export interface AdminSummaryStats {
   totalHostels?: number;
   totalResidents?: number;
   mrr?: number;
+  /** What MRR is derived from, e.g. "activeSubscriptions". */
+  mrrBasis?: string;
+  mrrCurrency?: string;
+  mrrPaidPlans?: number;
+  mrrFreePlans?: number;
+  mrrLapsedPlans?: number;
+  occupancy?: AdminSummaryOccupancy;
+}
+
+/** `data.pendingApprovals` block — a count plus a deep-link to the queue. */
+export interface AdminSummaryPendingApprovals {
+  count?: number;
+  reviewUrl?: string;
+}
+
+export interface AdminRecentHostelOwner {
+  id?: string;
+  name?: string;
+  email?: string;
+  avatarUrl?: string | null;
+}
+
+/** One row of `data.recentHostels` (lightweight — no beds/rooms detail). */
+export interface AdminRecentHostel {
+  id: string;
+  name: string;
+  type?: string;
+  city?: string;
+  logoUrl?: string | null;
+  createdAt?: string | null;
+  owner?: AdminRecentHostelOwner | null;
+}
+
+/** `data.health` block — revenue/occupancy/collection snapshot. */
+export interface AdminSummaryHealth {
+  monthlyRevenue?: number;
+  totalRevenue?: number;
+  pendingDues?: number;
+  rooms?: number;
+  bedsOccupied?: number;
+  activePlans?: number;
+  currency?: string;
+  collectionRate?: number;
+}
+
+export interface AdminSummary {
+  totalHostels?: number;
+  totalResidents?: number;
+  /** Registered platform users (owners + residents + admins). */
+  users?: number;
+  activeResidents?: number;
+  pendingBookings?: number;
+  pendingLeaves?: number;
+  unpaidFees?: number;
+  /** Fee amount collected (all time / period, per backend). */
+  paidAmount?: number;
+  outstandingAmount?: number;
+  currency?: string;
+  mrr?: number;
+  mrrBasis?: string;
   monthlyRevenue?: number;
   totalRevenue?: number;
   pendingAmount?: number;
@@ -748,8 +817,20 @@ export interface AdminSummary {
   occupancyRate?: number;
   totalBeds?: number;
   occupiedBeds?: number;
+  availableBeds?: number;
   totalRooms?: number;
   activePlans?: number | string;
+  /** When the backend computed this snapshot (ISO string). */
+  generatedAt?: string;
+  /** True when the backend served this from its L1/L2 cache. */
+  isCached?: boolean;
+  /** Cache tier the response came from, e.g. "L2". */
+  cacheLevel?: string;
+  pendingApprovals?: AdminSummaryPendingApprovals;
+  recentHostels?: AdminRecentHostel[];
+  /** Original nested blocks, kept for components that want the raw shape. */
+  stats?: AdminSummaryStats;
+  health?: AdminSummaryHealth;
   hostels?: Hostel[];
   revenueTrend?: RevenueTrendPoint[];
   [key: string]: unknown;

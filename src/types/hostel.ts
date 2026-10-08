@@ -36,6 +36,8 @@ export interface Hostel {
     firstName: string;
     lastName: string;
     email: string;
+    /** Owner contact — the admin hostels table shows it next to the name. */
+    phone?: string | null;
     avatarUrl?: string | null;
   } | null;
   /** Backend field is `logoUrl` (Cloudinary); `imageUrl` kept as legacy alias. */

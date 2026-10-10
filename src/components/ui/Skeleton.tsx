@@ -6,9 +6,9 @@ export function Skeleton({ className }: { className?: string }) {
   );
 }
 
-export function CardSkeleton() {
+export function CardSkeleton({ className }: { className?: string }) {
   return (
-    <div className="rounded-card border border-surface-border bg-white p-5">
+    <div className={cn("rounded-card border border-surface-border bg-white p-5", className)}>
       <Skeleton className="h-4 w-24" />
       <Skeleton className="mt-3 h-8 w-20" />
       <Skeleton className="mt-2 h-3 w-32" />

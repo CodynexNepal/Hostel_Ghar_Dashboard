@@ -4,10 +4,29 @@
  *
  * This is intentionally separate from `src/lib/payment-qr.ts`, which manages
  * each HOSTEL's own QRs (what residents pay). Platform QRs belong to
- * Hostel Ghar itself, so they live here as static config — no backend
- * change required.
+ * Hostel Ghar itself.
  *
- * How to go live:
+ * SOURCE OF TRUTH — the backend now persists these to PostgreSQL
+ * (`platform_qrs` table, images on Cloudinary) via:
+ *   GET  /v1/hostel-ghar/platform-qrs         (owner checkout — active only)
+ *   GET  /v1/hostel-ghar/admin/platform-qrs    (admin list)
+ *   POST/PUT/DELETE /admin/platform-qrs[/:id]  (admin CRUD)
+ * The dashboard feeds the served rows into the backend cache via
+ * `setBackendPlatformQrs()` (see `usePlatformCheckoutQrs` for owners and
+ * `usePlatformSettings` for admins), so every device shows the same QRs.
+ *
+ * Resolution order in `getPlatformQr` (highest priority first):
+ *   1. backend cache  — the DB/Cloudinary rows served by the API (normal case).
+ *   2. env URL        — a per-deploy override via NEXT_PUBLIC_PLATFORM_*_QR.
+ *   3. static file    — public/images/platform/*.png shipped with the build.
+ *
+ * There is deliberately NO localStorage fallback: localStorage is per-browser
+ * and per-device, so an admin "save" would only ever appear in that one browser
+ * and never reach owners on other devices. If the API is unreachable, the admin
+ * UI surfaces a real error instead of faking success — the database is the only
+ * source of truth for uploaded QRs.
+ *
+ * Static-file / env fallbacks (still supported for deploys without the API):
  *  1. Drop your real QR images in `public/images/platform/`:
  *       - esewa-qr.png (or .jpg)
  *       - khalti-qr.png
@@ -19,10 +38,6 @@
  *       NEXT_PUBLIC_PLATFORM_ESEWA_LABEL="eSewa ID: 98XXXXXXXX • Hostel Ghar"
  *       NEXT_PUBLIC_PLATFORM_KHALTI_LABEL="Khalti ID: 98XXXXXXXX • Hostel Ghar"
  *       NEXT_PUBLIC_PLATFORM_BANK_LABEL="Nabil Bank • A/C 0123456789 • Hostel Ghar Pvt. Ltd."
- *  3. OR upload from the admin dashboard: `/admin/settings` → Platform QRs.
- *     Admin uploads are stored in localStorage (`hg_platform_qr_*`) and take
- *     precedence over the static files above, so owners see them instantly
- *     on `/subscription` without a redeploy.
  */
 import type { SubscriptionPaymentMethod } from "@/lib/api-types";
 
@@ -37,7 +52,7 @@ export interface PlatformQrEntry {
   /** Short hint shown in the pay step. */
   hint: string;
   /** Where the resolved src came from — for the admin "source" badge. */
-  source?: "upload" | "env" | "file";
+  source?: "backend" | "env" | "file";
 }
 
 function envOr(path: string, key: string): string {
@@ -85,29 +100,56 @@ const ENV_LABEL_KEY: Record<PlatformQrMethod, string> = {
   BANK: "NEXT_PUBLIC_PLATFORM_BANK_LABEL",
 };
 
-const LS_QR_KEY = (m: PlatformQrMethod) => `hg_platform_qr_${m.toLowerCase()}`;
-const LS_LABEL_KEY = (m: PlatformQrMethod) => `hg_platform_qr_label_${m.toLowerCase()}`;
 export const PLATFORM_QR_EVENT = "platform_qr_changed";
 export const PLATFORM_QR_MAX_BYTES = 4 * 1024 * 1024;
 
-function readLs(key: string): string | null {
-  if (typeof window === "undefined") return null;
+/** Backend QR cache — filled by `setBackendPlatformQrs` (GET /platform-qrs). */
+let backendCache: Partial<Record<PlatformQrMethod, { src: string; label: string }>> = {};
+
+function readBackendCache(method: PlatformQrMethod): { src: string; label: string } | null {
+  return backendCache[method] ?? null;
+}
+
+/**
+ * Cache backend QR rows client-side so owner checkout (`PlatformQrPanel`
+ * → `getPlatformQr`) serves the DB/Cloudinary URLs. This is the ONLY source
+ * of uploaded QRs — there is no per-browser override. No-op on server.
+ */
+export function setBackendPlatformQrs(
+  rows: { method?: string; qrImageUrl?: string; qrCodeUrl?: string; imageUrl?: string; label?: string }[]
+): void {
+  if (typeof window === "undefined") return;
+  const next: typeof backendCache = {};
+  for (const row of rows ?? []) {
+    const m = String(row?.method ?? "").toUpperCase();
+    if (m !== "ESEWA" && m !== "KHALTI" && m !== "BANK") continue;
+    const src = String(row?.qrImageUrl ?? row?.qrCodeUrl ?? row?.imageUrl ?? "").trim();
+    if (!src) continue;
+    next[m as PlatformQrMethod] = { src, label: String(row?.label ?? "").trim() };
+  }
+  backendCache = next;
   try {
-    const v = window.localStorage.getItem(key);
-    return v && v.trim() ? v : null;
+    window.dispatchEvent(new CustomEvent(PLATFORM_QR_EVENT));
   } catch {
-    return null;
+    /* noop */
   }
 }
 
 export function getPlatformQr(method: PlatformQrMethod): PlatformQrEntry {
-  const uploaded = readLs(LS_QR_KEY(method));
-  const uploadedLabel = readLs(LS_LABEL_KEY(method));
   const envSrc = envOr(DEFAULT_SRC[method], ENV_SRC_KEY[method]);
   const envIsCustom = envSrc !== DEFAULT_SRC[method];
-  const label = uploadedLabel ?? labelOr(DEFAULT_LABEL[method], ENV_LABEL_KEY[method]);
-  if (uploaded) {
-    return { method, src: uploaded, label, hint: HINT[method], source: "upload" };
+  const label = labelOr(DEFAULT_LABEL[method], ENV_LABEL_KEY[method]);
+  // DB/Cloudinary rows (set via `setBackendPlatformQrs` after GET /platform-qrs)
+  // are the source of truth for uploaded QRs and win over file/env config.
+  const backendEntry = readBackendCache(method);
+  if (backendEntry?.src) {
+    return {
+      method,
+      src: backendEntry.src,
+      label: backendEntry.label || label,
+      hint: HINT[method],
+      source: "backend",
+    };
   }
   return { method, src: envSrc, label, hint: HINT[method], source: envIsCustom ? "env" : "file" };
 }
@@ -120,33 +162,7 @@ export function platformMethodLabel(method: PlatformQrMethod): string {
   return method === "ESEWA" ? "eSewa" : method === "KHALTI" ? "Khalti" : "Bank";
 }
 
-/** Persist an admin-uploaded QR (data-URL) + label. Fires a reactive event. */
-export function savePlatformQr(method: PlatformQrMethod, src: string, label: string): void {
-  if (typeof window === "undefined") return;
-  try {
-    if (src) window.localStorage.setItem(LS_QR_KEY(method), src);
-    else window.localStorage.removeItem(LS_QR_KEY(method));
-    if (label.trim()) window.localStorage.setItem(LS_LABEL_KEY(method), label.trim());
-    else window.localStorage.removeItem(LS_LABEL_KEY(method));
-    window.dispatchEvent(new CustomEvent(PLATFORM_QR_EVENT, { detail: { method } }));
-  } catch {
-    throw new Error("Browser storage is full. Try a smaller image (under 2 MB).");
-  }
-}
-
-/** Remove an admin-uploaded QR, falling back to file/env config. */
-export function removePlatformQr(method: PlatformQrMethod): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.removeItem(LS_QR_KEY(method));
-    window.localStorage.removeItem(LS_LABEL_KEY(method));
-    window.dispatchEvent(new CustomEvent(PLATFORM_QR_EVENT, { detail: { method } }));
-  } catch {
-    /* noop */
-  }
-}
-
-/** Read a File as a data-URL (for instant preview + localStorage persist). */
+/** Read a File as a data-URL for an instant in-form preview before upload. */
 export function fileToPlatformQrDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();

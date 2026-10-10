@@ -8,6 +8,7 @@ import { Legend, PALETTE, Segmented } from "@/components/analytics/charts";
 import { downloadCSV, toCSV } from "@/lib/analytics";
 import { formatCurrency } from "@/lib/utils";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { CardSkeleton } from "@/components/ui/Skeleton";
 import type { AdminSummaryWithCounts } from "@/lib/hostelGhar";
 import type { RevenueTrendPoint } from "@/lib/api-types";
 import type { Hostel } from "@/types/hostel";
@@ -35,10 +36,12 @@ function sliceByRange<T>(rows: T[], range: RangeKey): T[] {
 /** Platform revenue — live `revenueTrend` buckets from admin summary. */
 export function PlatformRevenueSection({
   summary,
-  range,
+  range = "1y",
+  isLoading = false,
 }: {
   summary: AdminSummaryWithCounts | null;
-  range: RangeKey;
+  range?: RangeKey;
+  isLoading?: boolean;
 }) {
   const [mode, setMode] = useState<TrendMode>("monthly");
   const data = useMemo(
@@ -47,6 +50,11 @@ export function PlatformRevenueSection({
   );
   const tot = data.reduce((a, d) => a + d.collected, 0);
   const billed = data.reduce((a, d) => a + d.billed, 0);
+
+  if (isLoading) {
+    return <CardSkeleton className="min-h-[320px]" />;
+  }
+
   if (data.length === 0) {
     return (
       <ChartShell title="Platform revenue" subtitle="No revenue buckets yet">
@@ -114,13 +122,34 @@ export function PlatformRevenueSection({
 }
 
 /** Fee lifecycle donut — live fee counts from admin summary. */
-export function PlatformPaymentSection({ summary }: { summary: AdminSummaryWithCounts | null }) {
-  const counts = summary?.feeCounts;
+export function PlatformPaymentSection({
+  summary,
+  isLoading = false,
+}: {
+  summary: AdminSummaryWithCounts | null;
+  isLoading?: boolean;
+}) {
+  const counts =
+    summary?.feeCounts ??
+    (summary?.feeLifecycle
+      ? {
+          paid: summary.feeLifecycle.paid,
+          partial: summary.feeLifecycle.partiallyPaid ?? 0,
+          pending: summary.feeLifecycle.pending,
+          overdue: summary.feeLifecycle.overdue,
+        }
+      : undefined);
+
+  if (isLoading) {
+    return <CardSkeleton className="min-h-[320px]" />;
+  }
+
   const paid = counts?.paid ?? summary?.paidFees ?? 0;
   const partial = counts?.partial ?? 0;
   const pending = counts?.pending ?? summary?.pendingFees ?? 0;
   const overdue = counts?.overdue ?? summary?.overdueFees ?? 0;
-  const total = paid + partial + pending + overdue;
+  const total = summary?.feeLifecycle?.total ?? (paid + partial + pending + overdue);
+
   if (!counts && total === 0) {
     return (
       <ChartShell title="Fee lifecycle" subtitle="No fee counts yet">
@@ -152,7 +181,27 @@ export function PlatformPaymentSection({ summary }: { summary: AdminSummaryWithC
           )
         )
       }
-      footer={<p>Only 4 lifecycle states — paid, partial, pending, overdue.</p>}
+      footer={
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+          <div className="flex flex-wrap gap-2">
+            <span className="inline-flex items-center gap-1 rounded bg-neutral-100 px-2 py-0.5 font-medium text-neutral-800">
+              <span className="h-1.5 w-1.5 rounded-full bg-neutral-900" /> Paid: {paid}
+            </span>
+            {partial > 0 && (
+              <span className="inline-flex items-center gap-1 rounded bg-blue-50 px-2 py-0.5 font-medium text-blue-700">
+                <span className="h-1.5 w-1.5 rounded-full bg-blue-600" /> Partial: {partial}
+              </span>
+            )}
+            <span className="inline-flex items-center gap-1 rounded bg-amber-50 px-2 py-0.5 font-medium text-amber-800">
+              <span className="h-1.5 w-1.5 rounded-full bg-amber-500" /> Pending: {pending}
+            </span>
+            <span className="inline-flex items-center gap-1 rounded bg-red-50 px-2 py-0.5 font-medium text-red-800">
+              <span className="h-1.5 w-1.5 rounded-full bg-red-600" /> Overdue: {overdue}
+            </span>
+          </div>
+          <span className="text-neutral-500">Total: {total}</span>
+        </div>
+      }
     >
       <Donut
         centerTop={`${coll}%`}

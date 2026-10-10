@@ -49,6 +49,7 @@ import type {
   FloorOverviewItem,
   RoomMixItem,
   AdminSummary,
+  AdminFeeLifecycle,
   AdminSummaryStats,
   AdminSummaryHealth,
   AdminSummaryPendingApprovals,
@@ -70,6 +71,24 @@ import type {
   SubscriptionPlanId,
   SubscriptionRequest,
   SubscriptionReviewAction,
+  HostelProfileSettings,
+  UpdateHostelProfileSettingsPayload,
+  NotificationPreferences,
+  UpdateNotificationPreferencesPayload,
+  PlatformSettings,
+  UpdatePlatformSettingsPayload,
+  GeneralSettings,
+  UpdateGeneralSettingsPayload,
+  BillingSettings,
+  UpdateBillingSettingsPayload,
+  AccessSettings,
+  UpdateAccessSettingsPayload,
+  AlertSettings,
+  UpdateAlertSettingsPayload,
+  SystemSettings,
+  UpdateSystemSettingsPayload,
+  PlatformQr,
+  UpsertPlatformQrPayload,
 } from "./api-types";
 import type { Hostel, Room } from "../types/hostel";
 import type { Resident } from "../types/resident";
@@ -857,8 +876,14 @@ export function normalizeRevenueTrend(payload: unknown): RevenueTrendPoint[] {
     const r = asRecord(item);
     const toNum = (v: unknown): number =>
       typeof v === "number" ? v : typeof v === "string" && v !== "" ? Number(v) : NaN;
-    const year = toNum(r.billingYear ?? r.billing_year ?? r.year);
-    const month = toNum(r.billingMonth ?? r.billing_month ?? r.month);
+    let year = toNum(r.billingYear ?? r.billing_year ?? r.year);
+    let month = toNum(r.billingMonth ?? r.billing_month ?? r.month);
+    if (!Number.isFinite(year) || !Number.isFinite(month)) {
+      const p = String(r.period ?? r.label ?? r.monthLabel ?? "");
+      const parsed = parseTrendLabel(p);
+      if (parsed.year) year = parsed.year;
+      if (parsed.month) month = parsed.month;
+    }
     return (Number.isFinite(year) ? year : 0) * 12 + (Number.isFinite(month) ? month : 0);
   };
   const ordered = [...list]
@@ -909,8 +934,16 @@ export function normalizeRevenueTrend(payload: unknown): RevenueTrendPoint[] {
       ),
       0
     );
-    const outstandingRaw = pick("outstanding", "outstandingAmount", "remaining", "balance");
+    const outstandingRaw = pick(
+      "outstanding",
+      "outstandingAmount",
+      "remaining",
+      "balance",
+      "pending",
+      "pendingAmount"
+    );
     const outstanding = outstandingRaw === undefined ? undefined : num(outstandingRaw, 0);
+    const pending = num(pick("pending", "pendingAmount"), outstanding ?? 0);
     // Backend sends either billed or outstanding; billed wins, else derive it.
     const billed =
       billedRaw === undefined
@@ -918,13 +951,16 @@ export function normalizeRevenueTrend(payload: unknown): RevenueTrendPoint[] {
           ? undefined
           : collected + outstanding
         : num(billedRaw, 0);
+    const formattedLabel = dashboardMonthLabel(billingMonth, billingYear);
     return {
-      label: rawLabel || dashboardMonthLabel(billingMonth, billingYear) || "—",
+      label: formattedLabel || rawLabel || "—",
       billingMonth,
       billingYear,
       collected,
       billed,
       outstanding,
+      pending,
+      period: rawLabel || undefined,
     };
   });
 }
@@ -1194,8 +1230,20 @@ function analyticsScopes(raw: unknown): Record<string, unknown>[] {
   const root = (unwrap<Record<string, unknown>>(raw) ?? {}) as Record<string, unknown>;
   const scopes = [root];
   // One level of nesting: `data` / `summary` / `stats` / `overview` / `result`,
-  // plus the admin payload's `health` and `stats.occupancy` blocks.
-  for (const key of ["data", "summary", "stats", "overview", "result", "health", "occupancy"]) {
+  // plus the admin payload's `health`, `stats.occupancy`, `trends`, `feeLifecycle`, `finance`, `planMix` blocks.
+  for (const key of [
+    "data",
+    "summary",
+    "stats",
+    "overview",
+    "result",
+    "health",
+    "occupancy",
+    "trends",
+    "feeLifecycle",
+    "finance",
+    "planMix",
+  ]) {
     const v = root[key];
     if (v !== null && typeof v === "object" && !Array.isArray(v)) {
       scopes.push(v as Record<string, unknown>);
@@ -1229,14 +1277,26 @@ function strOrUndefined(v: unknown): string | undefined {
 }
 
 function analyticsFeeCounts(
-  pick: (...keys: string[]) => unknown
+  pick: (...keys: string[]) => unknown,
+  root?: Record<string, unknown>
 ): OwnerSummaryFeeCounts | undefined {
+  const feeLc = (pick("feeLifecycle", "fee_lifecycle") ?? root?.feeLifecycle) as
+    | Record<string, unknown>
+    | undefined;
+  if (feeLc && typeof feeLc === "object") {
+    return {
+      paid: analyticsNum(feeLc.paid, 0),
+      pending: analyticsNum(feeLc.pending, 0),
+      partial: analyticsNum(feeLc.partiallyPaid ?? feeLc.partial ?? feeLc.partially_paid, 0),
+      overdue: analyticsNum(feeLc.overdue, 0),
+    };
+  }
   const num = (v: unknown): number | undefined =>
     v === undefined ? undefined : analyticsNum(v, 0);
-  const paid = num(pick("paidFees", "paid_fees", "paidCount"));
-  const pending = num(pick("pendingFees", "pending_fees", "pendingCount"));
-  const partial = num(pick("partialFees", "partial_fees", "partialCount"));
-  const overdue = num(pick("overdueFees", "overdue_fees", "overdueCount"));
+  const paid = num(pick("paidFees", "paid_fees", "paidCount", "paid"));
+  const pending = num(pick("pendingFees", "pending_fees", "pendingCount", "pending"));
+  const partial = num(pick("partialFees", "partial_fees", "partialCount", "partiallyPaid", "partial"));
+  const overdue = num(pick("overdueFees", "overdue_fees", "overdueCount", "overdue"));
   if (
     paid === undefined &&
     pending === undefined &&
@@ -1405,9 +1465,49 @@ export function normalizeAdminSummary(raw: unknown): AdminSummaryWithCounts {
     stats: normalizeAdminStats(pick("stats")),
     health: normalizeAdminHealth(pick("health")),
     revenueTrend: normalizeRevenueTrend(
-      pick("revenueTrend", "revenue_trend", "revenueSeries", "revenueByMonth")
+      pick("revenueTrend", "revenue_trend", "revenueSeries", "revenueByMonth") ??
+        (root.trends as Record<string, unknown> | undefined)?.revenue ??
+        (pick("trends") as Record<string, unknown> | undefined)?.revenue ??
+        root.revenueTrend
     ),
-    feeCounts: analyticsFeeCounts(pick),
+    feeLifecycle: normalizeAdminFeeLifecycle(
+      pick("feeLifecycle", "fee_lifecycle") ?? root.feeLifecycle
+    ),
+    feeCounts: analyticsFeeCounts(pick, root),
+    finance: (pick("finance") ?? root.finance) as AdminSummary["finance"],
+    planMix: (pick("planMix", "plan_mix") ?? root.planMix) as AdminSummary["planMix"],
+    trends: (pick("trends") ?? root.trends)
+      ? {
+          ...((pick("trends") ?? root.trends) as Record<string, unknown>),
+          revenue: normalizeRevenueTrend(
+            pick("revenueTrend", "revenue_trend", "revenueSeries", "revenueByMonth") ??
+              (root.trends as Record<string, unknown> | undefined)?.revenue ??
+              (pick("trends") as Record<string, unknown> | undefined)?.revenue ??
+              root.revenueTrend
+          ),
+        }
+      : undefined,
+  };
+}
+
+function normalizeAdminFeeLifecycle(raw: unknown): AdminFeeLifecycle | undefined {
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const r = raw as Record<string, unknown>;
+  const num = (v: unknown): number => {
+    const n = typeof v === "string" ? Number(v) : (v as number);
+    return Number.isFinite(n) ? n : 0;
+  };
+  const total = num(r.total ?? r.totalFees ?? r.total_fees ?? r.count);
+  const paid = num(r.paid ?? r.paidFees ?? r.paid_fees);
+  const pending = num(r.pending ?? r.pendingFees ?? r.pending_fees);
+  const overdue = num(r.overdue ?? r.overdueFees ?? r.overdue_fees);
+  const partiallyPaid = num(r.partiallyPaid ?? r.partial ?? r.partially_paid);
+  return {
+    total: total || paid + pending + overdue + partiallyPaid,
+    paid,
+    pending,
+    overdue,
+    partiallyPaid,
   };
 }
 
@@ -2792,6 +2892,206 @@ export const hostelGhar = {
       api.patch<PaymentQr | ApiEnvelope<PaymentQr>>(`${paymentQrBasePath()}/${id}/toggle`, {}),
     /** DELETE /:id — "Remove" QR (OWNER, ADMIN). */
     remove: (id: string) => api.delete<unknown>(`${paymentQrBasePath()}/${id}`),
+  },
+
+  settings: {
+    /**
+     * SETTINGS ENDPOINTS (frontend-first — implement in backend later).
+     * Owner hostel profile + notification preferences. Hostel is resolved
+     * server-side from auth / X-Hostel-Id. Payment QRs excluded (own
+     * `paymentQrs` namespace, already integrated).
+     */
+    /** GET /settings/hostel — owner hostel profile for `/settings`. */
+    getHostelProfile: () =>
+      getWithRetry<HostelProfileSettings | ApiEnvelope<HostelProfileSettings>>(
+        `${PREFIX}/settings/hostel`
+      ),
+    /** PUT /settings/hostel — update owner hostel profile. */
+    updateHostelProfile: (payload: UpdateHostelProfileSettingsPayload) =>
+      api.put<HostelProfileSettings | ApiEnvelope<HostelProfileSettings>>(
+        `${PREFIX}/settings/hostel`,
+        payload
+      ),
+    /** GET /settings/notifications — rent reminders + alert prefs. */
+    getNotifications: () =>
+      getWithRetry<NotificationPreferences | ApiEnvelope<NotificationPreferences>>(
+        `${PREFIX}/settings/notifications`
+      ),
+    /** PUT /settings/notifications — save rent reminders + alert prefs. */
+    updateNotifications: (payload: UpdateNotificationPreferencesPayload) =>
+      api.put<NotificationPreferences | ApiEnvelope<NotificationPreferences>>(
+        `${PREFIX}/settings/notifications`,
+        payload
+      ),
+    /** PUT /auth/change-password — Security card (already on backend). */
+    changePassword: (payload: { currentPassword: string; newPassword: string }) =>
+      api.put<{ message?: string }>(`${PREFIX}/auth/change-password`, payload),
+  },
+
+  platformSettings: {
+    /**
+     * PLATFORM SETTINGS ENDPOINTS (frontend-first — SUPER_ADMIN).
+     * One URL per `/admin/settings` tab. The legacy full-document routes
+     * (`GET+PUT /admin/settings`) are kept as fallback until backend ships
+     * the per-tab routes below.
+     */
+    /** GET /admin/settings — legacy full document (fallback). */
+    get: () =>
+      getWithRetry<PlatformSettings | ApiEnvelope<PlatformSettings>>(
+        `${PREFIX}/admin/settings`
+      ),
+    /** PUT /admin/settings — legacy partial update (fallback). */
+    update: (payload: UpdatePlatformSettingsPayload) =>
+      api.put<PlatformSettings | ApiEnvelope<PlatformSettings>>(
+        `${PREFIX}/admin/settings`,
+        payload
+      ),
+    general: {
+      /** GET /admin/settings/general — General & Identity tab. */
+      get: () =>
+        getWithRetry<GeneralSettings | ApiEnvelope<GeneralSettings>>(
+          `${PREFIX}/admin/settings/general`
+        ),
+      /** PUT /admin/settings/general — save General & Identity tab. */
+      update: (payload: UpdateGeneralSettingsPayload) =>
+        api.put<GeneralSettings | ApiEnvelope<GeneralSettings>>(
+          `${PREFIX}/admin/settings/general`,
+          payload
+        ),
+    },
+    billing: {
+      /** GET /admin/settings/billing — Billing & Plans tab. */
+      get: () =>
+        getWithRetry<BillingSettings | ApiEnvelope<BillingSettings>>(
+          `${PREFIX}/admin/settings/billing`
+        ),
+      /** PUT /admin/settings/billing — save Billing & Plans tab. */
+      update: (payload: UpdateBillingSettingsPayload) =>
+        api.put<BillingSettings | ApiEnvelope<BillingSettings>>(
+          `${PREFIX}/admin/settings/billing`,
+          payload
+        ),
+    },
+    access: {
+      /** GET /admin/settings/access — Access & Security tab. */
+      get: () =>
+        getWithRetry<AccessSettings | ApiEnvelope<AccessSettings>>(
+          `${PREFIX}/admin/settings/access`
+        ),
+      /** PUT /admin/settings/access — save Access & Security tab. */
+      update: (payload: UpdateAccessSettingsPayload) =>
+        api.put<AccessSettings | ApiEnvelope<AccessSettings>>(
+          `${PREFIX}/admin/settings/access`,
+          payload
+        ),
+    },
+    alerts: {
+      /** GET /admin/settings/alerts — Alerts & Notifications tab. */
+      get: () =>
+        getWithRetry<AlertSettings | ApiEnvelope<AlertSettings>>(
+          `${PREFIX}/admin/settings/alerts`
+        ),
+      /** PUT /admin/settings/alerts — save Alerts & Notifications tab. */
+      update: (payload: UpdateAlertSettingsPayload) =>
+        api.put<AlertSettings | ApiEnvelope<AlertSettings>>(
+          `${PREFIX}/admin/settings/alerts`,
+          payload
+        ),
+    },
+    system: {
+      /** GET /admin/settings/system — System & Cache tab. */
+      get: () =>
+        getWithRetry<SystemSettings | ApiEnvelope<SystemSettings>>(
+          `${PREFIX}/admin/settings/system`
+        ),
+      /** PUT /admin/settings/system — save System & Cache tab. */
+      update: (payload: UpdateSystemSettingsPayload) =>
+        api.put<SystemSettings | ApiEnvelope<SystemSettings>>(
+          `${PREFIX}/admin/settings/system`,
+          payload
+        ),
+      /** POST /admin/settings/system/purge-cache — purge all caches. */
+      purgeCache: () =>
+        api.post<{ message?: string; purgedAt?: string }>(
+          `${PREFIX}/admin/settings/system/purge-cache`,
+          {}
+        ),
+    },
+    /** POST /admin/settings/cache/purge — legacy cache purge (fallback). */
+    purgeCache: () =>
+      api.post<{ message?: string; purgedAt?: string }>(
+        `${PREFIX}/admin/settings/cache/purge`,
+        {}
+      ),
+    /**
+     * PLATFORM QR CHECKOUT ENDPOINTS (frontend-first — SUPER_ADMIN).
+     * Powers `/admin/settings` → Platform QRs tab (what owners scan on
+     * `/subscription`). Hostel `paymentQrs` namespace untouched.
+     */
+    /** GET /admin/platform-qrs — list checkout QRs (ESEWA/KHALTI/BANK). */
+    listQrs: () =>
+      getWithRetry<PlatformQr[] | ApiEnvelope<PlatformQr[]>>(
+        `${PREFIX}/admin/platform-qrs`
+      ),
+    /** POST /admin/platform-qrs — upload QR (multipart `qrImage` or JSON url). */
+    createQr: (payload: UpsertPlatformQrPayload) => {
+      if (payload.file instanceof File) {
+        const form = new FormData();
+        form.append("method", String(payload.method));
+        form.append("label", payload.label);
+        form.append("qrImage", payload.file, payload.file.name);
+        if (payload.isActive !== undefined) form.append("isActive", String(payload.isActive));
+        return api.post<PlatformQr | ApiEnvelope<PlatformQr>>(
+          `${PREFIX}/admin/platform-qrs`,
+          form,
+          { headers: { "Content-Type": "multipart/form-data" } }
+        );
+      }
+      return api.post<PlatformQr | ApiEnvelope<PlatformQr>>(
+        `${PREFIX}/admin/platform-qrs`,
+        {
+          method: payload.method,
+          label: payload.label,
+          qrImageUrl: payload.qrImageUrl,
+          ...(payload.isActive !== undefined ? { isActive: payload.isActive } : {}),
+        }
+      );
+    },
+    /** PUT /admin/platform-qrs/:id — replace image/label. */
+    updateQr: (id: string, payload: UpsertPlatformQrPayload) => {
+      if (payload.file instanceof File) {
+        const form = new FormData();
+        form.append("method", String(payload.method));
+        form.append("label", payload.label);
+        form.append("qrImage", payload.file, payload.file.name);
+        if (payload.isActive !== undefined) form.append("isActive", String(payload.isActive));
+        return api.put<PlatformQr | ApiEnvelope<PlatformQr>>(
+          `${PREFIX}/admin/platform-qrs/${id}`,
+          form,
+          { headers: { "Content-Type": "multipart/form-data" } }
+        );
+      }
+      return api.put<PlatformQr | ApiEnvelope<PlatformQr>>(
+        `${PREFIX}/admin/platform-qrs/${id}`,
+        {
+          method: payload.method,
+          label: payload.label,
+          ...(payload.qrImageUrl ? { qrImageUrl: payload.qrImageUrl } : {}),
+          ...(payload.isActive !== undefined ? { isActive: payload.isActive } : {}),
+        }
+      );
+    },
+    /** DELETE /admin/platform-qrs/:id — remove a checkout QR. */
+    removeQr: (id: string) =>
+      api.delete<{ message?: string }>(`${PREFIX}/admin/platform-qrs/${id}`),
+    /**
+     * GET /platform-qrs — active checkout QRs owners scan on `/subscription`.
+     * Owner/admin read backed by the `platform_qrs` table (Cloudinary URLs),
+     * so every device sees the admin's uploaded QRs — not just the browser
+     * that uploaded them. Falls back to file/env config when the route 404s.
+     */
+    listActiveQrs: () =>
+      getWithRetry<PlatformQr[] | ApiEnvelope<PlatformQr[]>>(`${PREFIX}/platform-qrs`),
   },
 };
 

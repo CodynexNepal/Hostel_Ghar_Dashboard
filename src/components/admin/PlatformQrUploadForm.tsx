@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Badge } from "@/components/ui/Badge";
 import { useToast } from "@/hooks/useToast";
+import { usePlatformSettings } from "@/hooks/usePlatformSettings";
 import {
   PLATFORM_QR_EVENT,
   PLATFORM_QR_MAX_BYTES,
@@ -15,8 +16,6 @@ import {
   fileToPlatformQrDataUrl,
   getPlatformQr,
   platformMethodLabel,
-  removePlatformQr,
-  savePlatformQr,
   type PlatformQrEntry,
   type PlatformQrMethod,
 } from "@/lib/platform-qr";
@@ -28,10 +27,10 @@ const METHOD_ACCENT: Record<PlatformQrMethod, string> = {
 };
 
 function SourceBadge({ entry }: { entry: PlatformQrEntry }) {
-  if (entry.source === "upload") {
+  if (entry.source === "backend") {
     return (
       <Badge tone="green">
-        <CheckCircle2 className="h-3 w-3" /> Live — uploaded
+        <CheckCircle2 className="h-3 w-3" /> Live — published
       </Badge>
     );
   }
@@ -54,7 +53,10 @@ function QrPreview({ entry }: { entry: PlatformQrEntry }) {
   }
   if (isDataUrl) {
     return (
-      <img
+      <Image
+        priority
+        fill
+        sizes="160px"
         src={entry.src}
         alt=""
         className="h-full w-full object-contain p-1.5"
@@ -86,6 +88,7 @@ function QrCard({
   onFile,
   onSave,
   onRemove,
+  removing,
 }: {
   entry: PlatformQrEntry;
   label: string;
@@ -98,6 +101,7 @@ function QrCard({
   onFile: (f?: File | null) => void;
   onSave: () => void;
   onRemove: () => void;
+  removing: boolean;
 }) {
   const method = entry.method;
   const previewSrc = draft ?? entry.src;
@@ -109,7 +113,7 @@ function QrCard({
         className={`flex items-center justify-between border-b px-3 py-2 ${METHOD_ACCENT[method]}`}
       >
         <p className="text-[13px] font-bold">{platformMethodLabel(method)}</p>
-        <SourceBadge entry={draft ? { ...entry, source: "upload" } : entry} />
+        <SourceBadge entry={entry} />
       </div>
       <div className="bg-white p-3">
         <div className="relative mx-auto h-40 w-40 overflow-hidden rounded-lg border border-surface-border bg-surface-muted">
@@ -148,7 +152,7 @@ function QrCard({
       </div>
       <div className="flex items-center justify-between gap-2 border-t border-neutral-100 bg-neutral-50/60 px-3 py-2.5">
         <Button size="sm" variant="outline" onClick={onPick} className="gap-1.5 text-xs">
-          {previewSrc && entry.source === "upload" && !draft ? (
+          {previewSrc && entry.source === "backend" && !draft ? (
             <span className="flex items-center gap-1.5">
               <ImagePlus className="h-3.5 w-3.5" /> Replace
             </span>
@@ -160,15 +164,17 @@ function QrCard({
         </Button>
         <div className="flex items-center gap-1.5">
           {dirty && (
-            <Button size="sm" onClick={onSave} loading={saving} className="text-xs">
+            <Button size="sm" onClick={onSave} loading={saving} disabled={removing} className="text-xs">
               Save
             </Button>
           )}
-          {entry.source === "upload" && !draft && (
+          {entry.source === "backend" && !draft && (
             <Button
               size="sm"
               variant="ghost"
               onClick={onRemove}
+              loading={removing}
+              disabled={saving}
               className="gap-1 px-2 text-xs text-red-600 hover:bg-red-50"
             >
               <Trash2 className="h-3.5 w-3.5" /> Remove
@@ -186,6 +192,7 @@ function QrCard({
 
 export function PlatformQrUploadForm() {
   const { success, error: toastError } = useToast();
+  const backend = usePlatformSettings();
   const [labels, setLabels] = useState<Record<PlatformQrMethod, string>>({
     ESEWA: getPlatformQr("ESEWA").label,
     KHALTI: getPlatformQr("KHALTI").label,
@@ -194,6 +201,7 @@ export function PlatformQrUploadForm() {
   const [draftSrc, setDraftSrc] = useState<Partial<Record<PlatformQrMethod, string>>>({});
   const [errs, setErrs] = useState<Partial<Record<PlatformQrMethod, string>>>({});
   const [saving, setSaving] = useState<PlatformQrMethod | null>(null);
+  const [removing, setRemoving] = useState<PlatformQrMethod | null>(null);
   const [version, setVersion] = useState(0);
   const fileRefs = useRef<Record<PlatformQrMethod, HTMLInputElement | null>>({
     ESEWA: null,
@@ -241,7 +249,8 @@ export function PlatformQrUploadForm() {
     }
   }
 
-  function handleSave(method: PlatformQrMethod, entry: PlatformQrEntry) {
+  async function handleSave(method: PlatformQrMethod, entry: PlatformQrEntry) {
+    if (saving || removing) return; // ignore double-submit while a request is in flight
     const src = draftSrc[method] ?? entry.src;
     const label = (labels[method] ?? "").trim();
     if (!src) {
@@ -252,28 +261,50 @@ export function PlatformQrUploadForm() {
       setErrs((p) => ({ ...p, [method]: "Add the account label owners see under the QR." }));
       return;
     }
+    // Keep the picked File so we can multipart-upload to the backend.
+    const pickedInput = fileRefs.current[method];
+    const pickedFile = pickedInput?.files?.[0] ?? null;
     setSaving(method);
+    // Database is the ONLY source of truth: POST/PUT /admin/platform-qrs
+    // (multipart file wins, else JSON url). No localStorage fallback — a failed
+    // save must surface as an error, never a silent per-browser "success" that
+    // owners on other devices would never see.
     try {
-      savePlatformQr(method, src, label);
+      const br = await backend.upsertQr(method, pickedFile, label, src);
+      if (!br.ok) {
+        setErrs((p) => ({ ...p, [method]: br.message }));
+        toastError(`Couldn't save ${platformMethodLabel(method)} QR`, br.message);
+        return;
+      }
       setErrs((p) => ({ ...p, [method]: undefined }));
-      success(
-        `${platformMethodLabel(method)} QR published`,
-        "Owners now see it on the Subscription page."
-      );
+      success(`${platformMethodLabel(method)} QR published`, "Owners now see it on the Subscription page.");
       refresh();
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Couldn't save. Try again.";
       setErrs((p) => ({ ...p, [method]: msg }));
-      toastError("Couldn't save QR", msg);
+      toastError(`Couldn't save ${platformMethodLabel(method)} QR`, msg);
     } finally {
       setSaving(null);
     }
   }
 
-  function handleRemove(method: PlatformQrMethod) {
-    removePlatformQr(method);
-    success(`${platformMethodLabel(method)} upload removed`, "Falling back to file / env config.");
-    refresh();
+  async function handleRemove(method: PlatformQrMethod) {
+    if (saving || removing) return; // ignore double-submit while a request is in flight
+    setRemoving(method);
+    try {
+      // Delete the DB/Cloudinary row. There is no local copy to clear.
+      const br = await backend.removeQr(method);
+      if (!br.ok) {
+        toastError(`Couldn't remove ${platformMethodLabel(method)} QR`, br.message);
+        return;
+      }
+      success(`${platformMethodLabel(method)} QR removed`, "Owners fall back to file / env config.");
+      refresh();
+    } catch (e) {
+      toastError("Couldn't remove QR", e instanceof Error ? e.message : "Try again.");
+    } finally {
+      setRemoving(null);
+    }
   }
 
   const entries: PlatformQrEntry[] = PLATFORM_QR_METHODS.map(getPlatformQr);
@@ -293,6 +324,7 @@ export function PlatformQrUploadForm() {
             draft={draftSrc[entry.method]}
             err={errs[entry.method]}
             saving={saving === entry.method}
+            removing={removing === entry.method}
             inputRef={(el) => {
               fileRefs.current[entry.method] = el;
             }}
@@ -304,10 +336,10 @@ export function PlatformQrUploadForm() {
         ))}
       </div>
       <p className="border-t border-surface-border px-4 py-3 text-xs text-neutral-500 sm:px-5">
-        JPG / PNG / WEBP up to 4 MB per QR. Saving stores the image in this browser and owners on
-        this device see it immediately on <span className="font-mono">/subscription</span>. For all
-        devices, also drop files in <span className="font-mono">public/images/platform/</span> or
-        set <span className="font-mono">NEXT_PUBLIC_PLATFORM_*_QR</span> URLs.
+        JPG / PNG / WEBP up to 4 MB per QR. Saving uploads the QR to the platform database, so
+        owners on every device see it immediately on <span className="font-mono">/subscription</span>.
+        If the save fails you&apos;ll see an error — nothing is stored only in your browser, so the
+        database is the single source of truth.
       </p>
     </Card>
   );

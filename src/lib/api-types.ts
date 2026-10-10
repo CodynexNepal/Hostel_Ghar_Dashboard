@@ -666,6 +666,10 @@ export interface RevenueTrendPoint {
    * `billed`). Total billed = collected + outstanding.
    */
   outstanding?: number;
+  /** Direct pending amount sent in backend trends.revenue (equivalent to outstanding). */
+  pending?: number;
+  /** Raw period string from backend, e.g. "2026-09". */
+  period?: string;
 }
 
 /** One row of `OwnerDashboard.floorOverview` — rooms/beds per floor. */
@@ -791,6 +795,40 @@ export interface AdminSummaryHealth {
   collectionRate?: number;
 }
 
+/** `data.feeLifecycle` block — platform invoice status distribution. */
+export interface AdminFeeLifecycle {
+  total: number;
+  paid: number;
+  pending: number;
+  overdue: number;
+  partiallyPaid?: number;
+}
+
+/** `data.finance` block — all-time vs current month financials. */
+export interface AdminFinanceSummary {
+  allTime?: {
+    collected?: number;
+    outstanding?: number;
+  };
+  thisMonth?: {
+    billed?: number;
+    collected?: number;
+    pending?: number;
+    collectionRate?: number;
+  };
+}
+
+/** `data.planMix` block — subscription distribution across hostels. */
+export interface AdminPlanMixSummary {
+  hostelsOnPlans?: number;
+  paid?: number;
+  free?: number;
+  lapsed?: number;
+  paidPercent?: number;
+  freePercent?: number;
+  lapsedPercent?: number;
+}
+
 export interface AdminSummary {
   totalHostels?: number;
   totalResidents?: number;
@@ -833,6 +871,13 @@ export interface AdminSummary {
   health?: AdminSummaryHealth;
   hostels?: Hostel[];
   revenueTrend?: RevenueTrendPoint[];
+  feeLifecycle?: AdminFeeLifecycle;
+  finance?: AdminFinanceSummary;
+  planMix?: AdminPlanMixSummary;
+  trends?: {
+    revenue?: RevenueTrendPoint[];
+    [key: string]: unknown;
+  };
   [key: string]: unknown;
 }
 
@@ -979,8 +1024,7 @@ export interface SubscriptionHistoryItem {
   reviewedAt?: string | null;
 }
 
-/**
- * One row of `GET /subscriptions/requests` — the admin review queue of owner
+/** One row of `GET /subscriptions/requests` — the admin review queue of owner
  * payment-proof requests (`PENDING` by default).
  */
 export interface SubscriptionRequest {
@@ -1005,4 +1049,188 @@ export interface SubscriptionRequest {
   startDate?: string;
   endDate?: string | null;
   createdAt?: string;
+}
+
+/* ---------------- Settings (frontend-first contract) ---------------- */
+/**
+ * SETTINGS API CONTRACT — frontend-first.
+ * The dashboard already calls these routes; the backend can implement them
+ * later with the exact paths/methods below. Until then every caller falls
+ * back to localStorage so the UI keeps working.
+ *
+ * Owner (requires OWNER / ADMIN, hostel-scoped via auth / X-Hostel-Id):
+ *   GET /v1/hostel-ghar/settings/hostel         → HostelProfileSettings
+ *   PUT /v1/hostel-ghar/settings/hostel         → HostelProfileSettings (body: UpdateHostelProfileSettingsPayload)
+ *   GET /v1/hostel-ghar/settings/notifications  → NotificationPreferences
+ *   PUT /v1/hostel-ghar/settings/notifications  → NotificationPreferences (body: UpdateNotificationPreferencesPayload)
+ *   PUT /v1/hostel-ghar/auth/change-password    → { message } (already defined, wired to Security card)
+ *
+ * Platform admin (requires SUPER_ADMIN) — one URL per tab:
+ *   GET /v1/hostel-ghar/admin/settings/general        → GeneralSettings
+ *   PUT /v1/hostel-ghar/admin/settings/general        → GeneralSettings (body: UpdateGeneralSettingsPayload)
+ *   GET /v1/hostel-ghar/admin/settings/billing        → BillingSettings
+ *   PUT /v1/hostel-ghar/admin/settings/billing        → BillingSettings (body: UpdateBillingSettingsPayload)
+ *   GET /v1/hostel-ghar/admin/settings/access         → AccessSettings
+ *   PUT /v1/hostel-ghar/admin/settings/access         → AccessSettings (body: UpdateAccessSettingsPayload)
+ *   GET /v1/hostel-ghar/admin/settings/alerts         → AlertSettings
+ *   PUT /v1/hostel-ghar/admin/settings/alerts         → AlertSettings (body: UpdateAlertSettingsPayload)
+ *   GET /v1/hostel-ghar/admin/settings/system         → SystemSettings
+ *   PUT /v1/hostel-ghar/admin/settings/system         → SystemSettings (body: UpdateSystemSettingsPayload)
+ *   POST /v1/hostel-ghar/admin/settings/system/purge-cache → { message, purgedAt? }
+ *   GET /v1/hostel-ghar/admin/settings (legacy)       → PlatformSettings (full doc; kept as fallback)
+ *   PUT /v1/hostel-ghar/admin/settings (legacy)       → PlatformSettings (partial allowed; kept as fallback)
+ *   GET /v1/hostel-ghar/admin/platform-qrs      → PlatformQr[] (checkout QRs owners scan)
+ *   POST /v1/hostel-ghar/admin/platform-qrs     → PlatformQr (multipart `qrImage` or JSON `qrImageUrl`)
+ *   PUT /v1/hostel-ghar/admin/platform-qrs/:id  → PlatformQr (replace image/label)
+ *   DELETE /v1/hostel-ghar/admin/platform-qrs/:id → { message }
+ *
+ * NOTE: hostel payment QRs (`paymentQrs` namespace) are already integrated
+ * and untouched. Platform QRs (this contract) are the checkout QRs owners
+ * scan on `/subscription` — previously localStorage-only, now backend-first
+ * with localStorage fallback.
+ */
+
+/** Owner hostel profile shown on `/settings` (also printed on invoices). */
+export interface HostelProfileSettings {
+  id?: string;
+  name: string;
+  phone: string;
+  email: string;
+  address: string;
+  city?: string;
+}
+
+/** `PUT /settings/hostel` body — all fields optional, only sent keys update. */
+export interface UpdateHostelProfileSettingsPayload {
+  name?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  city?: string;
+}
+
+/** Owner rent-reminder / alert preferences shown on `/settings`. */
+export interface NotificationPreferences {
+  rentReminders: boolean;
+  /** Days before due date to nudge (default 3). */
+  reminderDaysBefore?: number;
+  smsEnabled?: boolean;
+  emailEnabled?: boolean;
+}
+
+/** `PUT /settings/notifications` body — partial update allowed. */
+export type UpdateNotificationPreferencesPayload = Partial<NotificationPreferences>;
+
+/** Platform-wide settings edited on `/admin/settings` (all tabs except QRs). */
+export interface PlatformSettings {
+  platformName: string;
+  tagline: string;
+  supportEmail: string;
+  supportPhone: string;
+  officeAddress: string;
+  currency: string;
+  timezone: string;
+  gracePeriodDays: number;
+  freeTierResidentCap: number;
+  standardPlanPrice: number;
+  enterprisePlanPrice: number;
+  autoRemindRenewals: boolean;
+  allowQrCheckout: boolean;
+  allowPublicHostelSignup: boolean;
+  requireHostelApproval: boolean;
+  allowResidentSelfInvite: boolean;
+  sessionLifetimeDays: number;
+  requireAdmin2FA: boolean;
+  notifyOnSubscriptionProof: boolean;
+  overdueAlertThreshold: number;
+  dailyDigestEmail: boolean;
+  smsGatewayProvider: "SPARROW_SMS" | "AAKASH_SMS" | "MOCK";
+  maintenanceMode: boolean;
+  maintenanceMessage: string;
+}
+
+/** `PUT /admin/settings` body — partial update allowed. */
+export type UpdatePlatformSettingsPayload = Partial<PlatformSettings>;
+
+/* ---------------- Per-tab settings slices (one URL per tab) ---------------- */
+/** General & Identity tab — `GET+PUT /admin/settings/general`. */
+export interface GeneralSettings {
+  platformName: string;
+  tagline: string;
+  supportEmail: string;
+  supportPhone: string;
+  officeAddress: string;
+  currency: string;
+  timezone: string;
+}
+export type UpdateGeneralSettingsPayload = Partial<GeneralSettings>;
+
+/** Billing & Plans tab — `GET+PUT /admin/settings/billing`. */
+export interface BillingSettings {
+  gracePeriodDays: number;
+  freeTierResidentCap: number;
+  standardPlanPrice: number;
+  enterprisePlanPrice: number;
+  autoRemindRenewals: boolean;
+  allowQrCheckout: boolean;
+}
+export type UpdateBillingSettingsPayload = Partial<BillingSettings>;
+
+/** Access & Security tab — `GET+PUT /admin/settings/access`. */
+export interface AccessSettings {
+  allowPublicHostelSignup: boolean;
+  requireHostelApproval: boolean;
+  allowResidentSelfInvite: boolean;
+  sessionLifetimeDays: number;
+  requireAdmin2FA: boolean;
+}
+export type UpdateAccessSettingsPayload = Partial<AccessSettings>;
+
+/** Alerts & Notifications tab — `GET+PUT /admin/settings/alerts`. */
+export interface AlertSettings {
+  notifyOnSubscriptionProof: boolean;
+  overdueAlertThreshold: number;
+  dailyDigestEmail: boolean;
+  smsGatewayProvider: "SPARROW_SMS" | "AAKASH_SMS" | "MOCK";
+}
+export type UpdateAlertSettingsPayload = Partial<AlertSettings>;
+
+/** System & Cache tab — `GET+PUT /admin/settings/system`. */
+export interface SystemSettings {
+  maintenanceMode: boolean;
+  maintenanceMessage: string;
+}
+export type UpdateSystemSettingsPayload = Partial<SystemSettings>;
+
+/* ---------------- Platform QRs (admin checkout QRs) ---------------- */
+/**
+ * Platform checkout QR — the official Hostel Ghar account owners pay TO on
+ * `/subscription` (ESEWA / KHALTI / BANK). Separate from hostel `PaymentQr`
+ * rows (what residents pay). Backend stores the image (multipart `qrImage`
+ * or JSON `qrImageUrl`) and serves a public URL owners can scan.
+ */
+export type PlatformQrMethod = "ESEWA" | "KHALTI" | "BANK";
+
+export interface PlatformQr {
+  id: string;
+  method: PlatformQrMethod | string;
+  /** Public QR image URL (Cloudinary/S3) — owners scan this. */
+  qrImageUrl: string;
+  /** Human line under the QR (e.g. "eSewa ID: 98XXXXXXXX • Hostel Ghar"). */
+  label: string;
+  isActive?: boolean;
+  updatedAt?: string;
+  createdAt?: string;
+  [key: string]: unknown;
+}
+
+/** `POST /admin/platform-qrs` body — multipart file or JSON url. */
+export interface UpsertPlatformQrPayload {
+  method: PlatformQrMethod | string;
+  label: string;
+  /** File upload path — sent as multipart `qrImage`. */
+  file?: File | null;
+  /** JSON path (when no file): direct image URL. */
+  qrImageUrl?: string;
+  isActive?: boolean;
 }

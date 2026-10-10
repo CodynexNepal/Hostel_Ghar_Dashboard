@@ -13,6 +13,7 @@ import { DataTable, type Column } from "@/components/ui/DataTable";
 import { CardSkeleton, TableSkeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/hooks/useToast";
 import { useSubscription } from "@/hooks/useSubscription";
+import { usePlatformCheckoutQrs } from "@/hooks/usePlatformCheckoutQrs";
 import { PLANS } from "@/constants/plans";
 import type { Plan } from "@/types/subscription";
 import type {
@@ -81,6 +82,8 @@ export default function SubscriptionPage() {
     subscribe,
     cancel,
   } = useSubscription();
+  // Load the platform's real checkout QRs (DB-backed) for the pay step.
+  usePlatformCheckoutQrs();
   const [pendingPlan, setPendingPlan] = useState<Plan | null>(null);
   const [cycle, setCycle] = useState<BillingCycle>("MONTHLY");
   const [paymentMethod, setPaymentMethod] = useState<SubscriptionPaymentMethod>("ESEWA");

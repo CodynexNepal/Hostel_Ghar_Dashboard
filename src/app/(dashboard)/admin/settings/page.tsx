@@ -4,19 +4,19 @@ import { DashboardShell } from "@/components/layout/DashboardShell";
 import { Protected } from "@/components/common/Protected";
 import { BackLink } from "@/components/ui/BackLink";
 import { Button } from "@/components/ui/Button";
-import { PlatformQrUploadForm } from "@/components/admin/PlatformQrUploadForm";
+import { AdminSettingsView } from "@/components/admin/AdminSettingsView";
 import Link from "next/link";
 
 /**
- * Super-admin → Platform QRs.
- * Upload the official Hostel Ghar eSewa / Khalti / Bank QRs that hostel
- * owners scan on `/subscription` (Step 1) when paying for a plan.
+ * Super-admin → Platform Settings.
+ * Central administrative settings for platform branding, regional defaults,
+ * subscription plans, official payment QRs, onboarding policies, alerts, and system cache.
  */
 export default function AdminSettingsPage() {
   return (
     <DashboardShell
-      title="Platform QRs"
-      subtitle="Upload the official Hostel Ghar payment QRs owners scan during subscription checkout."
+      title="Platform Settings"
+      subtitle="Branding, subscription pricing rules, platform payment QRs, security, and cache controls."
     >
       <Protected roles={["SUPER_ADMIN"]} redirectTo="/dashboard">
         <div className="space-y-4">
@@ -28,7 +28,7 @@ export default function AdminSettingsPage() {
               </Button>
             </Link>
           </div>
-          <PlatformQrUploadForm />
+          <AdminSettingsView />
         </div>
       </Protected>
     </DashboardShell>

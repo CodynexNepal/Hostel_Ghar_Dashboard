@@ -32,3 +32,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# scratch / verification build output (compiled JS used for quick Node checks)
+.tmp-verify/

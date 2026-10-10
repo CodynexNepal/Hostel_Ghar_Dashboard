@@ -23,6 +23,10 @@ import { AdminKpiCards, type AdminKpi } from "@/components/admin/AdminKpiCards";
 import { AdminActionsGrid, type AdminAction } from "@/components/admin/AdminActionsGrid";
 import { AdminHostelsSpotlight } from "@/components/admin/AdminHostelsSpotlight";
 import { AdminApprovalsQueue } from "@/components/admin/AdminApprovalsQueue";
+import {
+  PlatformRevenueSection,
+  PlatformPaymentSection,
+} from "@/components/admin/AdminAnalyticsSections";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
 
 function num(v: unknown): number | null {
@@ -131,7 +135,7 @@ export default function SuperAdminPage() {
     {
       label: "Platform QRs",
       desc: "Upload subscription payment QRs",
-      href: "/admin/settings",
+      href: "/admin/settings?tab=qrs",
       icon: Wallet,
       accent: "bg-teal-600",
     },
@@ -212,6 +216,27 @@ export default function SuperAdminPage() {
               onRetry={refetch}
             />
           </div>
+          <section aria-label="Revenue and Fee Lifecycle" className="space-y-2.5">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-sm font-semibold text-neutral-900">
+                  Revenue Trend & Fee Lifecycle
+                </h2>
+                <p className="text-xs text-neutral-500">
+                  Platform billing velocity, cash collected, and resident invoice collection states.
+                </p>
+              </div>
+              <Link href="/admin/analytics">
+                <Button size="sm" variant="ghost" className="text-xs">
+                  Full analytics →
+                </Button>
+              </Link>
+            </div>
+            <div className="grid gap-4 xl:grid-cols-2">
+              <PlatformRevenueSection summary={summary} range="1y" isLoading={isLoading} />
+              <PlatformPaymentSection summary={summary} isLoading={isLoading} />
+            </div>
+          </section>
           <Card>
             <CardHeader
               title="Platform health"

@@ -164,7 +164,13 @@ function QrCard({
         </Button>
         <div className="flex items-center gap-1.5">
           {dirty && (
-            <Button size="sm" onClick={onSave} loading={saving} disabled={removing} className="text-xs">
+            <Button
+              size="sm"
+              onClick={onSave}
+              loading={saving}
+              disabled={removing}
+              className="text-xs"
+            >
               Save
             </Button>
           )}
@@ -277,7 +283,10 @@ export function PlatformQrUploadForm() {
         return;
       }
       setErrs((p) => ({ ...p, [method]: undefined }));
-      success(`${platformMethodLabel(method)} QR published`, "Owners now see it on the Subscription page.");
+      success(
+        `${platformMethodLabel(method)} QR published`,
+        "Owners now see it on the Subscription page."
+      );
       refresh();
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Couldn't save. Try again.";
@@ -298,7 +307,10 @@ export function PlatformQrUploadForm() {
         toastError(`Couldn't remove ${platformMethodLabel(method)} QR`, br.message);
         return;
       }
-      success(`${platformMethodLabel(method)} QR removed`, "Owners fall back to file / env config.");
+      success(
+        `${platformMethodLabel(method)} QR removed`,
+        "Owners fall back to file / env config."
+      );
       refresh();
     } catch (e) {
       toastError("Couldn't remove QR", e instanceof Error ? e.message : "Try again.");
@@ -337,9 +349,9 @@ export function PlatformQrUploadForm() {
       </div>
       <p className="border-t border-surface-border px-4 py-3 text-xs text-neutral-500 sm:px-5">
         JPG / PNG / WEBP up to 4 MB per QR. Saving uploads the QR to the platform database, so
-        owners on every device see it immediately on <span className="font-mono">/subscription</span>.
-        If the save fails you&apos;ll see an error — nothing is stored only in your browser, so the
-        database is the single source of truth.
+        owners on every device see it immediately on{" "}
+        <span className="font-mono">/subscription</span>. If the save fails you&apos;ll see an error
+        — nothing is stored only in your browser, so the database is the single source of truth.
       </p>
     </Card>
   );

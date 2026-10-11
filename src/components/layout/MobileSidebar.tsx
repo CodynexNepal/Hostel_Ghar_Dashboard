@@ -2,7 +2,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ChevronDown, Lock, X } from "lucide-react";
+import { ChevronDown, Crown, Lock, LogOut, X } from "lucide-react";
 import { useState } from "react";
 import { navigationForRole } from "@/constants/navigation";
 import { useAuth } from "@/hooks/useAuth";
@@ -12,7 +12,7 @@ import { useUpgrade } from "@/hooks/useUpgrade";
 import { cn } from "@/lib/utils";
 
 export function MobileSidebar() {
-  const { user, isLoading, subscriptionLoading } = useAuth();
+  const { user, isLoading, plan, subscriptionLoading, requestLogout } = useAuth();
   const { canAccess, isPlanLoading } = usePermissions();
   const { mobileOpen, setMobileOpen } = useSidebar();
   const { openUpgrade } = useUpgrade();
@@ -169,6 +169,77 @@ export function MobileSidebar() {
             })}
           </ul>
         </nav>
+        {user && (
+          <div className="shrink-0 space-y-2 border-t border-white/10 p-3">
+            <div className="flex items-center gap-2.5 px-1">
+              <span
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand text-xs font-bold text-brand-ink"
+                aria-hidden
+              >
+                {user.name.slice(0, 2).toUpperCase()}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span
+                  className="block truncate text-[13px] font-semibold text-white"
+                  title={user.name}
+                >
+                  {user.name}
+                </span>
+                <span className="block truncate text-xs text-neutral-400" title={user.email}>
+                  {user.email}
+                </span>
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setMobileOpen(false);
+                  requestLogout();
+                }}
+                aria-label="Log out"
+                title="Log out"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-neutral-400 transition-colors hover:bg-white/10 hover:text-white"
+              >
+                <LogOut className="h-4 w-4" aria-hidden />
+              </button>
+            </div>
+          </div>
+        )}
+        {user?.role === "HOSTEL_OWNER" && (
+          <div className="shrink-0 border-t border-white/10 p-3">
+            <Link
+              href="/subscription"
+              onClick={() => setMobileOpen(false)}
+              className="flex items-center justify-between gap-2 rounded-lg bg-white/5 p-3 transition-colors hover:bg-white/10"
+              aria-label={`Current plan ${plan} — view subscription`}
+            >
+              <span>
+                <span className="block text-[11px] font-medium uppercase tracking-wide text-neutral-400">
+                  Current plan
+                </span>
+                <span className="mt-0.5 flex items-center gap-1.5 text-sm font-bold text-white">
+                  <Crown className="h-4 w-4 text-brand" aria-hidden />
+                  {subscriptionLoading ? "…" : plan}
+                </span>
+                <span className="mt-0.5 block text-xs text-neutral-400">
+                  {user.subscription.residentsLimit == null ? (
+                    <>
+                      Unlimited residents
+                      {user.subscription.residentsUsed > 0
+                        ? ` · ${user.subscription.residentsUsed} in-house`
+                        : ""}
+                    </>
+                  ) : (
+                    <>
+                      {user.subscription.residentsUsed} / {user.subscription.residentsLimit}{" "}
+                      residents
+                    </>
+                  )}
+                </span>
+              </span>
+              <span className="text-xs font-semibold text-brand">Manage</span>
+            </Link>
+          </div>
+        )}
       </aside>
     </div>
   );

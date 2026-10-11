@@ -25,7 +25,8 @@ export interface SubscriptionInfo {
   plan: SubscriptionPlan;
   status: "ACTIVE" | "TRIAL" | "EXPIRED" | "CANCELLED";
   residentsUsed: number;
-  residentsLimit: number;
+  /** null = unlimited (PRO / ENTERPRISE). Never coerce to 500. */
+  residentsLimit: number | null;
   renewsAt: string;
   startedAt: string;
 }

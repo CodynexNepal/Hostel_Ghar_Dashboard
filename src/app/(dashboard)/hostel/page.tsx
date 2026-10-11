@@ -6,7 +6,13 @@ import { Card, CardHeader } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { useAuth } from "@/hooks/useAuth";
 import { useApi } from "@/hooks/useApi";
-import { hostelGhar, normalizeOwnerDashboard, toPaginated, unwrap } from "@/lib/hostelGhar";
+import {
+  hostelGhar,
+  normalizeOwnerDashboard,
+  toPaginated,
+  unwrap,
+  validHostelId,
+} from "@/lib/hostelGhar";
 import { TableSkeleton } from "@/components/ui/Skeleton";
 import { ErrorState, EmptyState } from "@/components/ui/EmptyState";
 import type { HostelDetail, OwnerDashboard } from "@/lib/api-types";
@@ -19,18 +25,10 @@ const FACILITIES = [
 ];
 
 export default function HostelOverviewPage() {
-  const { user } = useAuth();
+  const { user, refreshSubscription } = useAuth();
   const { data, error, isLoading, retry } = useApi(async () => {
-    let hostel: HostelDetail | null;
-    if (user?.hostelId) {
-      const res = await hostelGhar.hostels.get(user.hostelId);
-      hostel = unwrap<HostelDetail>(res.data);
-    } else {
-      const list = await hostelGhar.hostels.list({ limit: 1 });
-      const items = toPaginated<HostelDetail>(list.data).items;
-      hostel = items[0] ?? null;
-    }
-
+    // 1) Owner dashboard first — it always knows the hostel (data[0].hostelId)
+    //    even when /auth/me never sent a hostelId.
     let dashboard: OwnerDashboard | null = null;
     try {
       const res = await hostelGhar.owner.dashboard();
@@ -39,6 +37,49 @@ export default function HostelOverviewPage() {
       dashboard = normalizeOwnerDashboard(res.data);
     } catch {
       // The hostel profile can still render if the summary endpoint is unavailable.
+    }
+    const dashHostels = Array.isArray(dashboard?.hostels) ? dashboard!.hostels! : [];
+    const dashHostelId = dashHostels[0]?.hostelId;
+
+    // 2) Resolve a detail id: user.hostelId (UUID only) → dashboard row → list.
+    //    Non-UUID junk like "h-1" (legacy cache) must NEVER hit GET /hostels/:id.
+    let hostel: HostelDetail | null = null;
+    const directId = validHostelId(user?.hostelId) ?? validHostelId(dashHostelId);
+    if (directId) {
+      try {
+        const res = await hostelGhar.hostels.get(directId);
+        hostel = unwrap<HostelDetail>(res.data);
+      } catch {
+        hostel = null;
+      }
+    }
+    if (!hostel) {
+      try {
+        const list = await hostelGhar.hostels.list({ limit: 1 });
+        const items = toPaginated<HostelDetail>(list.data).items;
+        hostel = items[0] ?? null;
+      } catch {
+        hostel = null;
+      }
+    }
+    // 3) Last resort: synthesize a card from the dashboard row so a PRO owner
+    //    with live dashboard data never sees "No hostel found".
+    if (!hostel && dashHostels[0]) {
+      const row = dashHostels[0];
+      hostel = {
+        id: row.hostelId,
+        name: row.hostelName ?? user?.hostelName ?? "Your hostel",
+        type: row.hostelType,
+        address: "",
+        city: "",
+        phone: "",
+        email: user?.email ?? "",
+        totalRooms: 0,
+        totalBeds: null,
+        occupiedBeds: 0,
+        status: "ACTIVE",
+        ownerName: user?.name ?? null,
+      } as HostelDetail;
     }
 
     return hostel ? { hostel, dashboard } : null;

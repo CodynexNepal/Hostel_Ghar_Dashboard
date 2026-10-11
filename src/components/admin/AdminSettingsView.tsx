@@ -31,13 +31,7 @@ import { usePlatformSettings, PLATFORM_DEFAULTS } from "@/hooks/usePlatformSetti
 import type { PlatformSettings } from "@/lib/api-types";
 import { cn, formatCurrency } from "@/lib/utils";
 
-type SettingsTab =
-  | "general"
-  | "subscriptions"
-  | "qrs"
-  | "onboarding"
-  | "notifications"
-  | "system";
+type SettingsTab = "general" | "subscriptions" | "qrs" | "onboarding" | "notifications" | "system";
 
 export function AdminSettingsView({ defaultTab }: { defaultTab?: SettingsTab }) {
   const { success, error: toastError } = useToast();
@@ -74,7 +68,12 @@ export function AdminSettingsView({ defaultTab }: { defaultTab?: SettingsTab }) 
     if (r.ok) {
       setIsSaved(true);
       setTimeout(() => setIsSaved(false), 2000);
-      success(tabLabel === "Settings" ? "Settings saved" : `${tabLabel} saved`, r.localOnly ? "Saved locally (backend route not shipped yet)." : "Platform configuration successfully updated.");
+      success(
+        tabLabel === "Settings" ? "Settings saved" : `${tabLabel} saved`,
+        r.localOnly
+          ? "Saved locally (backend route not shipped yet)."
+          : "Platform configuration successfully updated."
+      );
     } else {
       toastError(`Couldn't save ${tabLabel.toLowerCase()}`, r.message);
     }
@@ -88,11 +87,22 @@ export function AdminSettingsView({ defaultTab }: { defaultTab?: SettingsTab }) 
 
   const handleClearCache = async () => {
     const r = await ps.purgeCache();
-    if (r.ok) success("Platform cache cleared", r.localOnly ? "Purge queued locally — POST /admin/settings/system/purge-cache not shipped yet." : r.message);
+    if (r.ok)
+      success(
+        "Platform cache cleared",
+        r.localOnly
+          ? "Purge queued locally — POST /admin/settings/system/purge-cache not shipped yet."
+          : r.message
+      );
     else toastError("Couldn't purge cache", r.message);
   };
 
-  const tabs: { id: SettingsTab; label: string; icon: React.ComponentType<{ className?: string }>; badge?: string }[] = [
+  const tabs: {
+    id: SettingsTab;
+    label: string;
+    icon: React.ComponentType<{ className?: string }>;
+    badge?: string;
+  }[] = [
     { id: "general", label: "General & Identity", icon: Globe },
     { id: "subscriptions", label: "Billing & Plans", icon: CreditCard },
     { id: "qrs", label: "Platform QRs", icon: QrCode, badge: "Checkout" },
@@ -124,7 +134,7 @@ export function AdminSettingsView({ defaultTab }: { defaultTab?: SettingsTab }) 
               {tab.badge && (
                 <span
                   className={cn(
-                    "rounded px-1.5 py-0.2 text-[10px] font-semibold",
+                    "py-0.2 rounded px-1.5 text-[10px] font-semibold",
                     isActive ? "bg-white/20 text-white" : "bg-brand-ink/10 text-brand-ink"
                   )}
                 >
@@ -204,7 +214,9 @@ export function AdminSettingsView({ defaultTab }: { defaultTab?: SettingsTab }) 
                     onChange={(e) => setSettings({ ...settings, timezone: e.target.value })}
                     className="h-10 w-full rounded-md border border-surface-border bg-white px-3 text-sm text-neutral-900 focus:border-brand-ink focus:outline-none focus:ring-2 focus:ring-brand"
                   >
-                    <option value="Asia/Kathmandu (UTC+5:45)">Asia/Kathmandu (Nepal Time · UTC+5:45)</option>
+                    <option value="Asia/Kathmandu (UTC+5:45)">
+                      Asia/Kathmandu (Nepal Time · UTC+5:45)
+                    </option>
                     <option value="Asia/Kolkata (UTC+5:30)">Asia/Kolkata (IST · UTC+5:30)</option>
                     <option value="UTC">UTC (Coordinated Universal Time)</option>
                   </select>
@@ -224,7 +236,11 @@ export function AdminSettingsView({ defaultTab }: { defaultTab?: SettingsTab }) 
                   >
                     <RotateCcw className="h-3.5 w-3.5" /> Reset to defaults
                   </Button>
-                  <Button type="submit" variant="primary" loading={savingTab === "General & Identity"}>
+                  <Button
+                    type="submit"
+                    variant="primary"
+                    loading={savingTab === "General & Identity"}
+                  >
                     <Save className="h-4 w-4" /> Save changes
                   </Button>
                 </div>
@@ -246,7 +262,9 @@ export function AdminSettingsView({ defaultTab }: { defaultTab?: SettingsTab }) 
                 </div>
                 <div className="flex items-center justify-between border-b border-surface-border pb-2">
                   <span className="text-neutral-500">Payment Gateways</span>
-                  <span className="text-xs font-medium text-neutral-700">eSewa · Khalti · Bank QR</span>
+                  <span className="text-xs font-medium text-neutral-700">
+                    eSewa · Khalti · Bank QR
+                  </span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-neutral-500">Calendar System</span>
@@ -261,7 +279,8 @@ export function AdminSettingsView({ defaultTab }: { defaultTab?: SettingsTab }) 
                   <AlertTriangle className="h-4 w-4 text-amber-600" /> Super Admin Authority
                 </p>
                 <p className="mt-1 text-amber-800">
-                  Changes made here instantly configure platform-wide branding, receipts, notification headers, and currency format across all connected hostels.
+                  Changes made here instantly configure platform-wide branding, receipts,
+                  notification headers, and currency format across all connected hostels.
                 </p>
               </div>
             </Card>
@@ -342,7 +361,8 @@ export function AdminSettingsView({ defaultTab }: { defaultTab?: SettingsTab }) 
                         Auto-Remind Owners Before Expiry
                       </span>
                       <span className="block text-xs text-neutral-500">
-                        Send automatic SMS and in-app notifications 7 days and 2 days before subscription expires.
+                        Send automatic SMS and in-app notifications 7 days and 2 days before
+                        subscription expires.
                       </span>
                     </div>
                     <input
@@ -361,7 +381,8 @@ export function AdminSettingsView({ defaultTab }: { defaultTab?: SettingsTab }) 
                         Allow Platform QR Proof Checkout
                       </span>
                       <span className="block text-xs text-neutral-500">
-                        Enable owners to scan platform eSewa/Khalti QR codes and submit screenshot proofs.
+                        Enable owners to scan platform eSewa/Khalti QR codes and submit screenshot
+                        proofs.
                       </span>
                     </div>
                     <input
@@ -394,7 +415,8 @@ export function AdminSettingsView({ defaultTab }: { defaultTab?: SettingsTab }) 
                     <span>Rs. 0</span>
                   </div>
                   <p className="mt-1 text-xs text-neutral-500">
-                    Up to {settings.freeTierResidentCap} active residents. Basic bed allocation and ledger.
+                    Up to {settings.freeTierResidentCap} active residents. Basic bed allocation and
+                    ledger.
                   </p>
                 </div>
                 <div className="rounded-lg border border-brand/40 bg-brand/5 p-3">
@@ -412,7 +434,8 @@ export function AdminSettingsView({ defaultTab }: { defaultTab?: SettingsTab }) 
                     <span>{formatCurrency(settings.enterprisePlanPrice)}/mo</span>
                   </div>
                   <p className="mt-1 text-xs text-neutral-600">
-                    Custom domain, multi-hostel owner console, priority review queue, dedicated account manager.
+                    Custom domain, multi-hostel owner console, priority review queue, dedicated
+                    account manager.
                   </p>
                 </div>
               </div>
@@ -425,11 +448,10 @@ export function AdminSettingsView({ defaultTab }: { defaultTab?: SettingsTab }) 
       {activeTab === "qrs" && (
         <div className="space-y-4">
           <div className="rounded-xl border border-teal-200 bg-teal-50 px-4 py-3 text-sm text-teal-900">
-            <p className="font-medium">
-              Official Platform QRs for Subscription Payments
-            </p>
+            <p className="font-medium">Official Platform QRs for Subscription Payments</p>
             <p className="mt-0.5 text-xs text-teal-800">
-              Hostel owners scanning QR codes on the upgrade modal will see these exact QRs. Keep your eSewa, Khalti, and Bank details up to date.
+              Hostel owners scanning QR codes on the upgrade modal will see these exact QRs. Keep
+              your eSewa, Khalti, and Bank details up to date.
             </p>
           </div>
           <PlatformQrUploadForm />
@@ -447,7 +469,9 @@ export function AdminSettingsView({ defaultTab }: { defaultTab?: SettingsTab }) 
             <div className="space-y-3 p-5">
               <label className="flex items-center justify-between rounded-lg border border-surface-border p-3.5 text-sm transition hover:bg-surface-muted/50">
                 <div>
-                  <span className="block font-medium text-neutral-900">Public Hostel Registration</span>
+                  <span className="block font-medium text-neutral-900">
+                    Public Hostel Registration
+                  </span>
                   <span className="block text-xs text-neutral-500">
                     Allow owners to submit new hostels from the public registration portal.
                   </span>
@@ -464,7 +488,9 @@ export function AdminSettingsView({ defaultTab }: { defaultTab?: SettingsTab }) 
 
               <label className="flex items-center justify-between rounded-lg border border-surface-border p-3.5 text-sm transition hover:bg-surface-muted/50">
                 <div>
-                  <span className="block font-medium text-neutral-900">Require Super Admin Approval</span>
+                  <span className="block font-medium text-neutral-900">
+                    Require Super Admin Approval
+                  </span>
                   <span className="block text-xs text-neutral-500">
                     Newly registered hostels remain in pending state until approved by admin.
                   </span>
@@ -481,7 +507,9 @@ export function AdminSettingsView({ defaultTab }: { defaultTab?: SettingsTab }) 
 
               <label className="flex items-center justify-between rounded-lg border border-surface-border p-3.5 text-sm transition hover:bg-surface-muted/50">
                 <div>
-                  <span className="block font-medium text-neutral-900">Resident Self-Registration</span>
+                  <span className="block font-medium text-neutral-900">
+                    Resident Self-Registration
+                  </span>
                   <span className="block text-xs text-neutral-500">
                     Residents can claim bed via hostel invite code or owner invitation email.
                   </span>
@@ -497,7 +525,11 @@ export function AdminSettingsView({ defaultTab }: { defaultTab?: SettingsTab }) 
               </label>
 
               <div className="flex justify-end pt-2">
-                <Button onClick={() => void saveSettings(undefined, "Access & Security")} variant="primary" loading={savingTab === "Access & Security"}>
+                <Button
+                  onClick={() => void saveSettings(undefined, "Access & Security")}
+                  variant="primary"
+                  loading={savingTab === "Access & Security"}
+                >
                   <Save className="h-4 w-4" /> Save onboarding policies
                 </Button>
               </div>
@@ -532,7 +564,9 @@ export function AdminSettingsView({ defaultTab }: { defaultTab?: SettingsTab }) 
 
               <label className="flex items-center justify-between rounded-lg border border-surface-border p-3.5 text-sm transition hover:bg-surface-muted/50">
                 <div>
-                  <span className="block font-medium text-neutral-900">Enforce 2FA on Super Admins</span>
+                  <span className="block font-medium text-neutral-900">
+                    Enforce 2FA on Super Admins
+                  </span>
                   <span className="block text-xs text-neutral-500">
                     Require TOTP authenticator code on all administrative logins.
                   </span>
@@ -550,12 +584,17 @@ export function AdminSettingsView({ defaultTab }: { defaultTab?: SettingsTab }) 
                   <Lock className="h-3.5 w-3.5 text-emerald-600" /> End-to-End Cookie Security
                 </div>
                 <p className="mt-0.5">
-                  Cookies (`hg_access_token` and `hg_hostel_id`) are signed with `SameSite=Lax` and HTTPS Secure flags in production.
+                  Cookies (`hg_access_token` and `hg_hostel_id`) are signed with `SameSite=Lax` and
+                  HTTPS Secure flags in production.
                 </p>
               </div>
 
               <div className="flex justify-end pt-2">
-                <Button onClick={() => void saveSettings(undefined, "Access & Security")} variant="primary" loading={savingTab === "Access & Security"}>
+                <Button
+                  onClick={() => void saveSettings(undefined, "Access & Security")}
+                  variant="primary"
+                  loading={savingTab === "Access & Security"}
+                >
                   <Save className="h-4 w-4" /> Save security rules
                 </Button>
               </div>
@@ -579,7 +618,8 @@ export function AdminSettingsView({ defaultTab }: { defaultTab?: SettingsTab }) 
                     Subscription Payment Proof Alerts
                   </span>
                   <span className="block text-xs text-neutral-500">
-                    Instant notification when a hostel owner uploads an eSewa/Khalti slip for review.
+                    Instant notification when a hostel owner uploads an eSewa/Khalti slip for
+                    review.
                   </span>
                 </div>
                 <input
@@ -594,17 +634,18 @@ export function AdminSettingsView({ defaultTab }: { defaultTab?: SettingsTab }) 
 
               <label className="flex items-center justify-between rounded-lg border border-surface-border p-3.5 text-sm transition hover:bg-surface-muted/50">
                 <div>
-                  <span className="block font-medium text-neutral-900">Daily Operations Digest</span>
+                  <span className="block font-medium text-neutral-900">
+                    Daily Operations Digest
+                  </span>
                   <span className="block text-xs text-neutral-500">
-                    Morning summary of active bookings, total collections, and new resident admissions.
+                    Morning summary of active bookings, total collections, and new resident
+                    admissions.
                   </span>
                 </div>
                 <input
                   type="checkbox"
                   checked={settings.dailyDigestEmail}
-                  onChange={(e) =>
-                    setSettings({ ...settings, dailyDigestEmail: e.target.checked })
-                  }
+                  onChange={(e) => setSettings({ ...settings, dailyDigestEmail: e.target.checked })}
                   className="h-4 w-4 rounded border-neutral-300 text-brand-ink focus:ring-brand"
                 />
               </label>
@@ -623,12 +664,17 @@ export function AdminSettingsView({ defaultTab }: { defaultTab?: SettingsTab }) 
                   }
                 />
                 <p className="mt-1 text-xs text-neutral-500">
-                  Trigger high-priority alert on the admin overview if cumulative overdue platform fees exceed this figure.
+                  Trigger high-priority alert on the admin overview if cumulative overdue platform
+                  fees exceed this figure.
                 </p>
               </div>
 
               <div className="flex justify-end pt-2">
-                <Button onClick={() => void saveSettings(undefined, "Alerts & Notifications")} variant="primary" loading={savingTab === "Alerts & Notifications"}>
+                <Button
+                  onClick={() => void saveSettings(undefined, "Alerts & Notifications")}
+                  variant="primary"
+                  loading={savingTab === "Alerts & Notifications"}
+                >
                   <Save className="h-4 w-4" /> Save alert settings
                 </Button>
               </div>
@@ -669,13 +715,22 @@ export function AdminSettingsView({ defaultTab }: { defaultTab?: SettingsTab }) 
                   <Smartphone className="h-3.5 w-3.5 text-blue-600" /> Gateway Dispatch Health
                 </div>
                 <div className="mt-2 grid grid-cols-2 gap-2 text-neutral-600">
-                  <div>Delivery Success Rate: <span className="font-semibold text-emerald-600">99.4%</span></div>
-                  <div>Average Latency: <span className="font-semibold text-neutral-900">1.2s</span></div>
+                  <div>
+                    Delivery Success Rate:{" "}
+                    <span className="font-semibold text-emerald-600">99.4%</span>
+                  </div>
+                  <div>
+                    Average Latency: <span className="font-semibold text-neutral-900">1.2s</span>
+                  </div>
                 </div>
               </div>
 
               <div className="flex justify-end pt-2">
-                <Button onClick={() => void saveSettings(undefined, "Alerts & Notifications")} variant="primary" loading={savingTab === "Alerts & Notifications"}>
+                <Button
+                  onClick={() => void saveSettings(undefined, "Alerts & Notifications")}
+                  variant="primary"
+                  loading={savingTab === "Alerts & Notifications"}
+                >
                   <Save className="h-4 w-4" /> Save SMS config
                 </Button>
               </div>
@@ -709,7 +764,8 @@ export function AdminSettingsView({ defaultTab }: { defaultTab?: SettingsTab }) 
               </div>
 
               <p className="text-xs text-neutral-600">
-                Dashboard analytics summaries are automatically cached in L2 for 60 seconds to ensure high-performance rendering under peak loads.
+                Dashboard analytics summaries are automatically cached in L2 for 60 seconds to
+                ensure high-performance rendering under peak loads.
               </p>
 
               <div className="border-t border-surface-border pt-3">
@@ -727,24 +783,20 @@ export function AdminSettingsView({ defaultTab }: { defaultTab?: SettingsTab }) 
           </Card>
 
           <Card>
-            <CardHeader
-              title="Maintenance Mode"
-              subtitle="Temporary service interruption banner"
-            />
+            <CardHeader title="Maintenance Mode" subtitle="Temporary service interruption banner" />
             <div className="space-y-4 p-5">
               <label className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50/60 p-3.5 text-sm">
                 <div>
                   <span className="block font-medium text-amber-950">Maintenance Mode</span>
                   <span className="block text-xs text-amber-800">
-                    Display maintenance notice across owner and resident portals. Super admins retain access.
+                    Display maintenance notice across owner and resident portals. Super admins
+                    retain access.
                   </span>
                 </div>
                 <input
                   type="checkbox"
                   checked={settings.maintenanceMode}
-                  onChange={(e) =>
-                    setSettings({ ...settings, maintenanceMode: e.target.checked })
-                  }
+                  onChange={(e) => setSettings({ ...settings, maintenanceMode: e.target.checked })}
                   className="h-4 w-4 rounded border-amber-400 text-amber-600 focus:ring-amber-500"
                 />
               </label>
@@ -763,13 +815,21 @@ export function AdminSettingsView({ defaultTab }: { defaultTab?: SettingsTab }) 
 
               <div className="rounded-lg bg-surface-muted p-3.5 text-xs text-neutral-600">
                 <div className="flex items-center justify-between">
-                  <span>Engine: <strong className="text-neutral-900">Hostel Ghar Core v2.4</strong></span>
-                  <span>Database: <strong className="text-emerald-600">PostgreSQL 15 (Pool OK)</strong></span>
+                  <span>
+                    Engine: <strong className="text-neutral-900">Hostel Ghar Core v2.4</strong>
+                  </span>
+                  <span>
+                    Database: <strong className="text-emerald-600">PostgreSQL 15 (Pool OK)</strong>
+                  </span>
                 </div>
               </div>
 
               <div className="flex justify-end pt-2">
-                <Button onClick={() => void saveSettings(undefined, "System & Cache")} variant="primary" loading={savingTab === "System & Cache"}>
+                <Button
+                  onClick={() => void saveSettings(undefined, "System & Cache")}
+                  variant="primary"
+                  loading={savingTab === "System & Cache"}
+                >
                   <Save className="h-4 w-4" /> Save system state
                 </Button>
               </div>

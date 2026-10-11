@@ -148,7 +148,7 @@ export function PlatformPaymentSection({
   const partial = counts?.partial ?? 0;
   const pending = counts?.pending ?? summary?.pendingFees ?? 0;
   const overdue = counts?.overdue ?? summary?.overdueFees ?? 0;
-  const total = summary?.feeLifecycle?.total ?? (paid + partial + pending + overdue);
+  const total = summary?.feeLifecycle?.total ?? paid + partial + pending + overdue;
 
   if (!counts && total === 0) {
     return (

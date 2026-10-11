@@ -54,6 +54,15 @@ export interface LoginResponse {
   user?: AuthUser;
 }
 
+export interface LogoutResponse {
+  success?: boolean;
+  message?: string;
+  data?: {
+    devicesRevoked?: string;
+    cacheKeysPurged?: number;
+  };
+}
+
 export interface RegisterResponse {
   token?: string;
   user?: AuthUser;

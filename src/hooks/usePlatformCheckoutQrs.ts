@@ -24,7 +24,13 @@ export function usePlatformCheckoutQrs() {
         const rows = unwrap<unknown>(res.data);
         if (Array.isArray(rows)) {
           setBackendPlatformQrs(
-            rows as { method?: string; qrImageUrl?: string; qrCodeUrl?: string; imageUrl?: string; label?: string }[]
+            rows as {
+              method?: string;
+              qrImageUrl?: string;
+              qrCodeUrl?: string;
+              imageUrl?: string;
+              label?: string;
+            }[]
           );
         }
       } catch {

@@ -116,7 +116,13 @@ function readBackendCache(method: PlatformQrMethod): { src: string; label: strin
  * of uploaded QRs — there is no per-browser override. No-op on server.
  */
 export function setBackendPlatformQrs(
-  rows: { method?: string; qrImageUrl?: string; qrCodeUrl?: string; imageUrl?: string; label?: string }[]
+  rows: {
+    method?: string;
+    qrImageUrl?: string;
+    qrCodeUrl?: string;
+    imageUrl?: string;
+    label?: string;
+  }[]
 ): void {
   if (typeof window === "undefined") return;
   const next: typeof backendCache = {};

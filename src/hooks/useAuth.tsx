@@ -51,7 +51,15 @@ interface AuthContextValue {
   isAuthenticated: boolean;
   login: (email: string, password: string) => Promise<LoginResult>;
   register: (p: Record<string, string>) => Promise<LoginResult>;
-  logout: () => void;
+  /** Open the "Are you sure?" logout confirmation (real logout happens on confirm). */
+  requestLogout: () => void;
+  logout: () => Promise<void>;
+  /** Confirmed logout — hits POST /auth/logout then wipes local session. */
+  confirmLogout: (logoutAll?: boolean) => Promise<void>;
+  isLoggingOut: boolean;
+  logoutModalOpen: boolean;
+  closeLogoutModal: () => void;
+  logoutError: string | null;
   refresh: () => Promise<void>;
   /** Re-fetch live plan for current owner (no-op for other roles). */
   refreshSubscription: (explicitUser?: AuthUser | null) => Promise<void>;
@@ -87,7 +95,52 @@ function normalizeUser(raw: unknown, fallback: UserRole): AuthUser {
     hostel_id?: string;
     hostel?: string | { id?: string; _id?: string; hostelId?: string; name?: string };
     role?: unknown;
+    // Backend user shapes vary: { name } vs { firstName, lastName } vs
+    // { fullName } vs nested { user: {...} }.
+    firstName?: unknown;
+    first_name?: unknown;
+    lastName?: unknown;
+    last_name?: unknown;
+    fullName?: unknown;
+    full_name?: unknown;
+    ownerName?: unknown;
+    owner_name?: unknown;
+    displayName?: unknown;
+    username?: unknown;
+    user?: unknown;
+    _id?: unknown;
+    id?: unknown;
   };
+  const nested =
+    u.user !== null && typeof u.user === "object" ? (u.user as Record<string, unknown>) : null;
+  const str = (v: unknown): string | undefined => {
+    if (typeof v !== "string") return undefined;
+    const t = v.trim();
+    return t ? t : undefined;
+  };
+  const first = str(u.firstName ?? u.first_name ?? nested?.firstName ?? nested?.first_name) ?? "";
+  const last = str(u.lastName ?? u.last_name ?? nested?.lastName ?? nested?.last_name) ?? "";
+  const composed = `${first} ${last}`.trim();
+  const backendName =
+    str(u.name) ??
+    str(nested?.name) ??
+    str(u.fullName ?? u.full_name ?? nested?.fullName ?? nested?.full_name) ??
+    str(u.ownerName ?? u.owner_name ?? nested?.ownerName) ??
+    str(u.displayName ?? nested?.displayName) ??
+    (composed ? composed : undefined) ??
+    str(u.username ?? nested?.username);
+  const email = str(u.email ?? nested?.email) ?? "";
+  // Never render the "Hostel User" placeholder when we know the email —
+  // fall back to the email prefix (dinesh.tamang1519@gmail.com → Dinesh Tamang1519).
+  const emailPrefix = email.split("@")[0] ?? "";
+  const prettyFromEmail = emailPrefix
+    ? emailPrefix
+        .split(/[._-]+/)
+        .filter(Boolean)
+        .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
+        .join(" ")
+    : undefined;
+  const name = backendName ?? prettyFromEmail ?? "Hostel User";
   const hostel = typeof u.hostel === "object" ? u.hostel : undefined;
   const hostelId =
     u.hostelId ??
@@ -100,22 +153,40 @@ function normalizeUser(raw: unknown, fallback: UserRole): AuthUser {
   // Backend roles come in many shapes ("owner", "ROLE_OWNER", ["ADMIN"], …).
   // normalizeRole maps them onto our union; fall back only when unknown.
   const role = normalizeRole(u.role) ?? fallback;
+  // Normalize the embedded subscription too — backend may send
+  // `{ plan: "PRO", residentsLimit: null }` for unlimited.
+  const rawSub = u.subscription as Partial<AuthUser["subscription"]> | undefined;
+  const subPlan = (typeof rawSub?.plan === "string" ? rawSub.plan.toUpperCase() : undefined) as
+    AuthUser["subscription"]["plan"] | undefined;
+  const normLimit = (v: unknown): number | null | undefined => {
+    if (v === undefined || v === "") return undefined;
+    if (v === null) return null;
+    const n = typeof v === "string" ? Number(v) : (v as number);
+    return Number.isFinite(n) ? n : undefined;
+  };
   return {
-    id: String(u.id ?? `u-${Date.now()}`),
-    name: u.name ?? "Hostel User",
-    email: u.email ?? "",
-    phone: u.phone ?? "",
+    id: String(u.id ?? u._id ?? nested?.id ?? nested?._id ?? `u-${Date.now()}`),
+    name,
+    email,
+    phone: str((u as { phone?: unknown }).phone ?? nested?.phone) ?? "",
     role,
-    avatarUrl: u.avatarUrl,
+    avatarUrl: u.avatarUrl ?? (str(nested?.avatarUrl) as string | undefined),
     hostelId,
     hostelName,
-    subscription: u.subscription ?? {
-      plan: role === "SUPER_ADMIN" ? "ENTERPRISE" : "FREE",
-      status: "ACTIVE",
-      residentsUsed: 0,
-      residentsLimit: role === "SUPER_ADMIN" ? 100000 : 10,
-      renewsAt: "",
-      startedAt: "",
+    subscription: {
+      plan: subPlan ?? (role === "SUPER_ADMIN" ? "ENTERPRISE" : "FREE"),
+      status: (rawSub?.status as AuthUser["subscription"]["status"]) ?? "ACTIVE",
+      residentsUsed: Number(rawSub?.residentsUsed ?? 0) || 0,
+      // PRO/ENTERPRISE = null (unlimited). FREE=10 — never invent 500.
+      residentsLimit:
+        normLimit(rawSub?.residentsLimit) ??
+        (role === "SUPER_ADMIN"
+          ? 100000
+          : subPlan === "PRO" || subPlan === "ENTERPRISE"
+            ? null
+            : 10),
+      renewsAt: rawSub?.renewsAt ?? "",
+      startedAt: rawSub?.startedAt ?? "",
     },
   };
 }
@@ -128,6 +199,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [authError, setAuthError] = useState<ApiErrorShape | null>(null);
   const [subscriptionLoading, setSubscriptionLoading] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [logoutModalOpen, setLogoutModalOpen] = useState(false);
+  const [logoutError, setLogoutError] = useState<string | null>(null);
+  const isLoggingOutRef = useRef(false);
   const userRef = useRef<AuthUser | null>(null);
 
   useEffect(() => {
@@ -149,7 +224,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             ...prev.subscription,
             plan: prev.role === "SUPER_ADMIN" ? "ENTERPRISE" : planId,
             residentsUsed: used,
-            residentsLimit: limit ?? 500,
+            // null = unlimited (PRO/ENTERPRISE). Never fall back to 500 —
+            // that is what rendered "5/500" for an unlimited plan.
+            residentsLimit: limit,
           },
         };
         writeCachedUser(next);
@@ -379,15 +456,74 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [router]
   );
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
+    // Backwards-compat alias — opens the confirmation modal.
+    setLogoutModalOpen(true);
+  }, []);
+
+  const requestLogout = useCallback(() => {
+    setLogoutError(null);
+    setLogoutModalOpen(true);
+  }, []);
+
+  const closeLogoutModal = useCallback(() => {
+    if (isLoggingOutRef.current) return;
+    setLogoutModalOpen(false);
+    setLogoutError(null);
+  }, []);
+
+  const wipeLocalSession = useCallback(() => {
     clearToken();
     clearHostelId();
     writeCachedUser(null);
     setUser(null);
     setPlanOverride(null);
     setAuthError(null);
-    if (typeof window !== "undefined") window.location.href = "/login";
   }, []);
+
+  const confirmLogout = useCallback(
+    async (logoutAll = false) => {
+      // Prevent double-taps firing parallel logouts.
+      if (isLoggingOutRef.current) return;
+      isLoggingOutRef.current = true;
+      setIsLoggingOut(true);
+      setLogoutError(null);
+      try {
+        // POST /auth/logout is idempotent by contract (works with NO token,
+        // an EXPIRED token, or a valid token — never 401s just to log out).
+        // Teardown happens server-side: token denylist, refresh-hash null,
+        // cache purge, socket kill, cookie clear. We never let a failure
+        // trap the user logged in — local session is wiped regardless.
+        try {
+          if (logoutAll) {
+            try {
+              await hostelGhar.auth.logoutAll();
+            } catch {
+              await hostelGhar.auth.logout(true);
+            }
+          } else {
+            await hostelGhar.auth.logout(false);
+          }
+        } catch (err) {
+          // Network down / backend unreachable: still log out locally.
+          // Only surface the error when it's NOT a plain network failure
+          // so the user knows cookies/tokens may still be alive server-side.
+          const apiErr = toApiError(err);
+          if (apiErr.status !== 0) setLogoutError(apiErr.message);
+        }
+      } finally {
+        wipeLocalSession();
+        isLoggingOutRef.current = false;
+        setIsLoggingOut(false);
+        setLogoutModalOpen(false);
+        if (typeof window !== "undefined") {
+          // Hard navigation guarantees no stale in-memory state survives.
+          window.location.href = logoutAll ? "/login?reason=logged-out-all" : "/login";
+        }
+      }
+    },
+    [wipeLocalSession]
+  );
 
   const switchRole = useCallback((r: UserRole) => {
     if (process.env.NODE_ENV === "production") return;
@@ -441,7 +577,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         subscription: {
           ...prev.subscription,
           plan: prev.role === "SUPER_ADMIN" ? "ENTERPRISE" : p,
-          residentsLimit: p === "FREE" ? 10 : p === "BASIC" ? 60 : 500,
+          // PRO / ENTERPRISE = null (unlimited) — must match PLANS + backend.
+          residentsLimit:
+            p === "FREE" ? 10 : p === "BASIC" ? 60 : p === "PRO" || p === "ENTERPRISE" ? null : 10,
         },
       };
       writeCachedUser(next);
@@ -463,7 +601,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isAuthenticated: Boolean(user),
       login,
       register,
+      requestLogout,
       logout,
+      confirmLogout,
+      isLoggingOut,
+      logoutModalOpen,
+      closeLogoutModal,
+      logoutError,
       refresh,
       refreshSubscription,
       switchRole,
@@ -480,7 +624,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       subscriptionLoading,
       login,
       register,
+      requestLogout,
       logout,
+      confirmLogout,
+      isLoggingOut,
+      logoutModalOpen,
+      closeLogoutModal,
+      logoutError,
       refresh,
       refreshSubscription,
       switchRole,

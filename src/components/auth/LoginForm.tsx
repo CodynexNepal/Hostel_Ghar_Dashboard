@@ -30,7 +30,7 @@ export function LoginForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="mt-6 space-y-5" noValidate>
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
       <Input
         label="Email address"
         type="email"

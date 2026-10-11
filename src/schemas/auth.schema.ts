@@ -10,6 +10,12 @@ export const loginSchema = yup.object({
 
 export type LoginFormValues = yup.InferType<typeof loginSchema>;
 
+export const forgotPasswordSchema = yup.object({
+  email: yup.string().email("Enter a valid email address.").required("Email is required."),
+});
+
+export type ForgotPasswordFormValues = yup.InferType<typeof forgotPasswordSchema>;
+
 export const registerSchema = yup.object({
   name: yup.string().min(2, "Enter your full name.").required("Name is required."),
   email: yup.string().email("Enter a valid email address.").required("Email is required."),

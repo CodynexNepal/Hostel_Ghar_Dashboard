@@ -14,6 +14,7 @@ import {
 import { DashboardShell } from "@/components/layout/DashboardShell";
 import { Protected } from "@/components/common/Protected";
 import { StatCard } from "@/components/dashboard/StatCard";
+import { SubscriptionBanner } from "@/components/dashboard/SubscriptionBanner";
 import { QuickActions } from "@/components/dashboard/QuickActions";
 import { RevenueChart, OccupancyDonut } from "@/components/dashboard/Charts";
 import { RecentPayments } from "@/components/dashboard/RecentPayments";
@@ -156,6 +157,7 @@ export default function OwnerDashboardPage() {
     >
       <Protected permission="VIEW_DASHBOARD">
         <div className="space-y-5">
+          <SubscriptionBanner />
           {hostels.length > 1 && (
             <Card className="p-4">
               <div className="mb-3 flex items-center gap-2">

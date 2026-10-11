@@ -1281,8 +1281,7 @@ function analyticsFeeCounts(
   root?: Record<string, unknown>
 ): OwnerSummaryFeeCounts | undefined {
   const feeLc = (pick("feeLifecycle", "fee_lifecycle") ?? root?.feeLifecycle) as
-    | Record<string, unknown>
-    | undefined;
+    Record<string, unknown> | undefined;
   if (feeLc && typeof feeLc === "object") {
     return {
       paid: analyticsNum(feeLc.paid, 0),
@@ -1295,7 +1294,9 @@ function analyticsFeeCounts(
     v === undefined ? undefined : analyticsNum(v, 0);
   const paid = num(pick("paidFees", "paid_fees", "paidCount", "paid"));
   const pending = num(pick("pendingFees", "pending_fees", "pendingCount", "pending"));
-  const partial = num(pick("partialFees", "partial_fees", "partialCount", "partiallyPaid", "partial"));
+  const partial = num(
+    pick("partialFees", "partial_fees", "partialCount", "partiallyPaid", "partial")
+  );
   const overdue = num(pick("overdueFees", "overdue_fees", "overdueCount", "overdue"));
   if (
     paid === undefined &&
@@ -1476,17 +1477,18 @@ export function normalizeAdminSummary(raw: unknown): AdminSummaryWithCounts {
     feeCounts: analyticsFeeCounts(pick, root),
     finance: (pick("finance") ?? root.finance) as AdminSummary["finance"],
     planMix: (pick("planMix", "plan_mix") ?? root.planMix) as AdminSummary["planMix"],
-    trends: (pick("trends") ?? root.trends)
-      ? {
-          ...((pick("trends") ?? root.trends) as Record<string, unknown>),
-          revenue: normalizeRevenueTrend(
-            pick("revenueTrend", "revenue_trend", "revenueSeries", "revenueByMonth") ??
-              (root.trends as Record<string, unknown> | undefined)?.revenue ??
-              (pick("trends") as Record<string, unknown> | undefined)?.revenue ??
-              root.revenueTrend
-          ),
-        }
-      : undefined,
+    trends:
+      (pick("trends") ?? root.trends)
+        ? {
+            ...((pick("trends") ?? root.trends) as Record<string, unknown>),
+            revenue: normalizeRevenueTrend(
+              pick("revenueTrend", "revenue_trend", "revenueSeries", "revenueByMonth") ??
+                (root.trends as Record<string, unknown> | undefined)?.revenue ??
+                (pick("trends") as Record<string, unknown> | undefined)?.revenue ??
+                root.revenueTrend
+            ),
+          }
+        : undefined,
   };
 }
 
@@ -2264,6 +2266,19 @@ export const hostelGhar = {
       api.post<LoginResponse | RegisterResponse>(`${PREFIX}/auth/register`, payload),
     login: (payload: LoginPayload) => api.post<LoginResponse>(`${PREFIX}/auth/login`, payload),
     me: () => api.get<unknown>(`${PREFIX}/auth/me`),
+    /**
+     * POST /auth/logout — idempotent production logout (never 401s).
+     * Denylists tokens, purges user cache, disconnects sockets, clears cookies.
+     * `logoutAll` kills every device/session.
+     */
+    logout: (logoutAll = false) =>
+      api.post<import("./api-types").LogoutResponse>(
+        `${PREFIX}/auth/logout${logoutAll ? "?logoutAll=true" : ""}`,
+        logoutAll ? { logoutAll: true } : {}
+      ),
+    /** POST /auth/logout/all — explicit all-devices kill switch. */
+    logoutAll: () =>
+      api.post<import("./api-types").LogoutResponse>(`${PREFIX}/auth/logout/all`, {}),
     forgotPassword: (payload: { email: string }) =>
       api.post<{ message: string }>(`${PREFIX}/auth/forgot-password`, payload),
     resetPassword: (payload: { token: string; password: string }) =>
@@ -2937,9 +2952,7 @@ export const hostelGhar = {
      */
     /** GET /admin/settings — legacy full document (fallback). */
     get: () =>
-      getWithRetry<PlatformSettings | ApiEnvelope<PlatformSettings>>(
-        `${PREFIX}/admin/settings`
-      ),
+      getWithRetry<PlatformSettings | ApiEnvelope<PlatformSettings>>(`${PREFIX}/admin/settings`),
     /** PUT /admin/settings — legacy partial update (fallback). */
     update: (payload: UpdatePlatformSettingsPayload) =>
       api.put<PlatformSettings | ApiEnvelope<PlatformSettings>>(
@@ -2988,9 +3001,7 @@ export const hostelGhar = {
     alerts: {
       /** GET /admin/settings/alerts — Alerts & Notifications tab. */
       get: () =>
-        getWithRetry<AlertSettings | ApiEnvelope<AlertSettings>>(
-          `${PREFIX}/admin/settings/alerts`
-        ),
+        getWithRetry<AlertSettings | ApiEnvelope<AlertSettings>>(`${PREFIX}/admin/settings/alerts`),
       /** PUT /admin/settings/alerts — save Alerts & Notifications tab. */
       update: (payload: UpdateAlertSettingsPayload) =>
         api.put<AlertSettings | ApiEnvelope<AlertSettings>>(
@@ -3019,10 +3030,7 @@ export const hostelGhar = {
     },
     /** POST /admin/settings/cache/purge — legacy cache purge (fallback). */
     purgeCache: () =>
-      api.post<{ message?: string; purgedAt?: string }>(
-        `${PREFIX}/admin/settings/cache/purge`,
-        {}
-      ),
+      api.post<{ message?: string; purgedAt?: string }>(`${PREFIX}/admin/settings/cache/purge`, {}),
     /**
      * PLATFORM QR CHECKOUT ENDPOINTS (frontend-first — SUPER_ADMIN).
      * Powers `/admin/settings` → Platform QRs tab (what owners scan on
@@ -3030,9 +3038,7 @@ export const hostelGhar = {
      */
     /** GET /admin/platform-qrs — list checkout QRs (ESEWA/KHALTI/BANK). */
     listQrs: () =>
-      getWithRetry<PlatformQr[] | ApiEnvelope<PlatformQr[]>>(
-        `${PREFIX}/admin/platform-qrs`
-      ),
+      getWithRetry<PlatformQr[] | ApiEnvelope<PlatformQr[]>>(`${PREFIX}/admin/platform-qrs`),
     /** POST /admin/platform-qrs — upload QR (multipart `qrImage` or JSON url). */
     createQr: (payload: UpsertPlatformQrPayload) => {
       if (payload.file instanceof File) {
@@ -3047,15 +3053,12 @@ export const hostelGhar = {
           { headers: { "Content-Type": "multipart/form-data" } }
         );
       }
-      return api.post<PlatformQr | ApiEnvelope<PlatformQr>>(
-        `${PREFIX}/admin/platform-qrs`,
-        {
-          method: payload.method,
-          label: payload.label,
-          qrImageUrl: payload.qrImageUrl,
-          ...(payload.isActive !== undefined ? { isActive: payload.isActive } : {}),
-        }
-      );
+      return api.post<PlatformQr | ApiEnvelope<PlatformQr>>(`${PREFIX}/admin/platform-qrs`, {
+        method: payload.method,
+        label: payload.label,
+        qrImageUrl: payload.qrImageUrl,
+        ...(payload.isActive !== undefined ? { isActive: payload.isActive } : {}),
+      });
     },
     /** PUT /admin/platform-qrs/:id — replace image/label. */
     updateQr: (id: string, payload: UpsertPlatformQrPayload) => {
@@ -3071,15 +3074,12 @@ export const hostelGhar = {
           { headers: { "Content-Type": "multipart/form-data" } }
         );
       }
-      return api.put<PlatformQr | ApiEnvelope<PlatformQr>>(
-        `${PREFIX}/admin/platform-qrs/${id}`,
-        {
-          method: payload.method,
-          label: payload.label,
-          ...(payload.qrImageUrl ? { qrImageUrl: payload.qrImageUrl } : {}),
-          ...(payload.isActive !== undefined ? { isActive: payload.isActive } : {}),
-        }
-      );
+      return api.put<PlatformQr | ApiEnvelope<PlatformQr>>(`${PREFIX}/admin/platform-qrs/${id}`, {
+        method: payload.method,
+        label: payload.label,
+        ...(payload.qrImageUrl ? { qrImageUrl: payload.qrImageUrl } : {}),
+        ...(payload.isActive !== undefined ? { isActive: payload.isActive } : {}),
+      });
     },
     /** DELETE /admin/platform-qrs/:id — remove a checkout QR. */
     removeQr: (id: string) =>

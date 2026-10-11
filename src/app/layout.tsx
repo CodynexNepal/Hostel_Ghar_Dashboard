@@ -7,6 +7,7 @@ import { UpgradeProvider } from "@/hooks/useUpgrade";
 import { ToastProvider } from "@/hooks/useToast";
 import { Toaster } from "@/components/common/Toaster";
 import { UpgradeModal } from "@/components/common/UpgradeModal";
+import { LogoutDialog } from "@/components/auth/LogoutDialog";
 
 const spaceGrotesk = localFont({
   src: [
@@ -37,6 +38,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <ToastProvider>
                 {children}
                 <UpgradeModal />
+                <LogoutDialog />
                 <Toaster />
               </ToastProvider>
             </UpgradeProvider>

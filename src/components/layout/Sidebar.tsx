@@ -2,6 +2,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { LogOut } from "lucide-react";
 import { navigationForRole, homeRouteForRole } from "@/constants/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { useSidebar } from "@/hooks/useSidebar";
@@ -38,7 +39,7 @@ export function BrandMark({ collapsed = false }: { collapsed?: boolean }) {
 }
 
 export function Sidebar() {
-  const { user, isLoading } = useAuth();
+  const { user, isLoading, requestLogout } = useAuth();
   const { collapsed, setMobileOpen } = useSidebar();
   const pathname = usePathname() ?? "/";
   // While auth revalidates, show skeleton briefly — never stick on it.
@@ -96,10 +97,10 @@ export function Sidebar() {
   }
   const nav = navigationForRole(user.role);
   const home = homeRouteForRole(user.role);
-  const pct = Math.min(
-    100,
-    (user.subscription.residentsUsed / Math.max(1, user.subscription.residentsLimit)) * 100
-  );
+  const limit = user.subscription.residentsLimit;
+  const used = user.subscription.residentsUsed;
+  const unlimited = limit == null;
+  const pct = unlimited ? 100 : Math.min(100, (used / Math.max(1, limit ?? 1)) * 100);
   return (
     <aside
       aria-label="Primary"
@@ -141,7 +142,13 @@ export function Sidebar() {
               />
             </div>
             <p className="mt-1.5 text-xs text-neutral-400">
-              {user.subscription.residentsUsed} / {user.subscription.residentsLimit} residents
+              {unlimited ? (
+                <>Unlimited residents{used > 0 ? ` · ${used} in-house` : ""}</>
+              ) : (
+                <>
+                  {used} / {limit} residents
+                </>
+              )}
             </p>
           </Link>
         ) : (
@@ -167,18 +174,34 @@ export function Sidebar() {
           </span>
           {!collapsed && (
             <span className="sidebar-label min-w-0 flex-1">
-              <span className="block truncate text-[13px] font-semibold text-white">
+              <span
+                className="block truncate text-[13px] font-semibold text-white"
+                title={user.name}
+              >
                 {user.name}
               </span>
-              <span className="block truncate text-xs text-neutral-400">
-                {user.role === "HOSTEL_OWNER"
-                  ? "Hostel Owner"
-                  : user.role === "SUPER_ADMIN"
-                    ? "Super Admin"
-                    : "Resident"}
+              <span className="block truncate text-xs text-neutral-400" title={user.email}>
+                {user.email ||
+                  (user.role === "HOSTEL_OWNER"
+                    ? "Hostel Owner"
+                    : user.role === "SUPER_ADMIN"
+                      ? "Super Admin"
+                      : "Resident")}
               </span>
             </span>
           )}
+          <button
+            type="button"
+            onClick={requestLogout}
+            title={collapsed ? "Log out" : undefined}
+            aria-label="Log out"
+            className={cn(
+              "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-neutral-400 transition-colors hover:bg-white/10 hover:text-white",
+              collapsed && "mt-2"
+            )}
+          >
+            <LogOut className="h-4 w-4" aria-hidden />
+          </button>
         </div>
       </div>
     </aside>

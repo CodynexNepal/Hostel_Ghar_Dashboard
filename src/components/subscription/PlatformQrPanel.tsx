@@ -93,7 +93,7 @@ export function PlatformQrPanel({ amount, cycleLabel, planName, method }: Props)
         <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-lg border border-surface-border bg-surface-muted sm:h-28 sm:w-28">
           {!imgFailed ? (
             isDataUrl ? (
-              <img
+              <Image
                 key={qrKey}
                 src={qr.src}
                 alt={`Hostel Ghar ${platformMethodLabel(qr.method)} payment QR`}

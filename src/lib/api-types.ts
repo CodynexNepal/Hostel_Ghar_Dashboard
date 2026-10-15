@@ -317,6 +317,58 @@ export interface CreateFeePayload {
   status?: FeeStatus;
 }
 
+/* ---------------- Invoices (owner dashboard) ---------------- */
+/**
+ * Backend `feeRouter.post('/invoices', ...ownerOrAdmin, normalizeInvoiceFields,
+ * `validateDto(CreateInvoiceDto)`, invoiceController.createInvoice)`.
+ * `normalizeInvoiceFields` accepts both flat (`residentId`) and nested
+ * (`resident.id`) shapes — send canonical flat keys.
+ */
+export type InvoiceStatus = "DRAFT" | "SENT" | "PAID" | "PENDING" | "OVERDUE" | "CANCELLED";
+
+export interface CreateInvoicePayload {
+  hostelId: string;
+  residentId: string;
+  /** Required by `CreateInvoiceDto` — 2–200 char string. */
+  residentName: string;
+  residentEmail?: string;
+  amount: number;
+  /** 1-12 — `normalizeInvoiceFields` also parses `billingMonth: "2026-09"`. */
+  billingMonth: number;
+  billingYear: number;
+  dueDate?: string;
+  status?: InvoiceStatus | string;
+  feeType?: string;
+  notes?: string;
+}
+
+export interface Invoice {
+  id: string;
+  hostelId?: string;
+  residentId?: string;
+  residentName?: string;
+  residentEmail?: string;
+  resident?: { id?: string; name?: string; email?: string; [key: string]: unknown };
+  amount?: number | string;
+  totalPayable?: number | string;
+  billingMonth?: number | string;
+  billingYear?: number | string;
+  month?: string;
+  dueDate?: string;
+  status?: InvoiceStatus | string;
+  feeType?: string;
+  notes?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  [key: string]: unknown;
+}
+
+export interface InvoiceListParams extends ListParams {
+  hostelId?: string;
+  residentId?: string;
+  status?: string;
+}
+
 /** Domain socket events broadcast by the backend (owner/admin rooms). */
 export type DomainSocketEvent =
   "hostel:updated" | "booking:confirmed" | "leave:status_changed" | "payment:processed";
@@ -1242,4 +1294,75 @@ export interface UpsertPlatformQrPayload {
   /** JSON path (when no file): direct image URL. */
   qrImageUrl?: string;
   isActive?: boolean;
+}
+
+/* ---------------- Staff (owner dashboard) ---------------- */
+/**
+ * Backend `staffRouter` record (OWNER, ADMIN).
+ * Canonical DTO fields follow `CreateStaffDto` / `UpdateStaffDto`;
+ * extra frontend-only fields (shift/status/notes) are tolerated on read
+ * and stripped by `validateDto` on write.
+ */
+export type StaffStatus = "ACTIVE" | "ON LEAVE" | "INACTIVE";
+
+export interface Staff {
+  id: string;
+  name: string;
+  role?: string;
+  position?: string;
+  phone?: string;
+  email?: string;
+  shift?: string;
+  status?: StaffStatus | string;
+  salary?: number | string;
+  monthlySalary?: number | string;
+  emergencyContact?: string;
+  emergencyPhone?: string;
+  joinDate?: string;
+  joinedAt?: string;
+  joiningDate?: string;
+  notes?: string;
+  address?: string;
+  hostelId?: string;
+  hostelName?: string;
+  /** Photo URL — backend may call this `photoUrl`, `photo`, `avatarUrl`, `imageUrl`. */
+  photoUrl?: string;
+  photo?: string;
+  avatarUrl?: string;
+  imageUrl?: string;
+  image?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  [key: string]: unknown;
+}
+
+/** `POST /staff` body — JSON, or multipart when a `photo` file is present. */
+export interface CreateStaffPayload {
+  name: string;
+  phone: string;
+  role: string;
+  hostelId?: string;
+  email?: string;
+  shift?: string;
+  status?: StaffStatus | string;
+  salary?: number | string;
+  emergencyContact?: string;
+  joinDate?: string;
+  notes?: string;
+  address?: string;
+  /** Direct photo URL (JSON path when no file is uploaded). */
+  photoUrl?: string;
+  avatarUrl?: string;
+  /** File upload path — sent as multipart `photo` (see `uploadStaffPhoto`). */
+  photo?: File | null;
+  [key: string]: unknown;
+}
+
+/** `PUT/PATCH /staff/:id` body — full (PUT) or partial (PATCH). */
+export type UpdateStaffPayload = Partial<CreateStaffPayload>;
+
+export interface StaffListParams extends ListParams {
+  hostelId?: string;
+  role?: string;
+  status?: string;
 }

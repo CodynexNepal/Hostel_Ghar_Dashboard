@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { usePermissions } from "@/hooks/usePermissions";
 import type { Permission, UserRole } from "@/types/auth";
+import { homeRouteForRole } from "@/constants/navigation";
 import { Skeleton } from "@/components/ui/Skeleton";
 
 export function Protected({
@@ -27,8 +28,11 @@ export function Protected({
   useEffect(() => {
     if (isLoading || planResolving) return;
     // Cookie-based auth: session lives in HttpOnly cookie + cached user.
-    // No user (and revalidation failed) → login. Wrong role → login too.
-    if (!user || !roleOk) router.replace("/login");
+    // No user (and revalidation failed) → login.
+    if (!user) router.replace("/login");
+    // Logged in but wrong role (e.g. resident opening /subscription):
+    // send them to their own dashboard, not the login page.
+    else if (!roleOk) router.replace(homeRouteForRole(user.role));
     else if (!permOk) router.replace(redirectTo);
   }, [isLoading, planResolving, user, roleOk, permOk, router, redirectTo]);
   if (isLoading || planResolving || !user || !roleOk || !permOk) {

@@ -89,6 +89,13 @@ import type {
   UpdateSystemSettingsPayload,
   PlatformQr,
   UpsertPlatformQrPayload,
+  Staff,
+  CreateStaffPayload,
+  UpdateStaffPayload,
+  StaffListParams,
+  CreateInvoicePayload,
+  Invoice,
+  InvoiceListParams,
 } from "./api-types";
 import type { Hostel, Room } from "../types/hostel";
 import type { Resident } from "../types/resident";
@@ -256,10 +263,29 @@ export async function resolveOwnerHostelId(preferred?: string | null): Promise<s
     const list = await api.get<Hostel[] | ApiEnvelope<Hostel[]>>(`${PREFIX}/hostels`, {
       params: { limit: 1 },
     });
-    return toPaginated<HostelDetail>(list.data).items[0]?.id ?? null;
+    const id = toPaginated<HostelDetail>(list.data).items[0]?.id;
+    const valid = validHostelId(id);
+    if (valid) return valid;
   } catch {
-    return null;
+    /* try owner dashboard */
   }
+  try {
+    const dashRes = await api.get(`${PREFIX}/owner/dashboard`);
+    const d = unwrap<Record<string, unknown>>(dashRes.data);
+    const dataPart = (d?.data ?? dashRes.data) as Array<Record<string, unknown>> | undefined;
+    const summary = Array.isArray(dataPart)
+      ? dataPart[0]
+      : (d as Record<string, unknown> | undefined);
+    const hid =
+      summary?.hostelId ??
+      summary?.id ??
+      (summary?.hostel as Record<string, unknown> | undefined)?.id;
+    const valid = validHostelId(String(hid ?? ""));
+    if (valid) return valid;
+  } catch {
+    /* continue */
+  }
+  return null;
 }
 
 /**
@@ -1064,6 +1090,96 @@ export function normalizeRoomMix(payload: unknown): RoomMixItem[] {
   });
 }
 
+/* ------------------------------------------------------------------ */
+/* Staff normalizers (owner dashboard)                                 */
+/* ------------------------------------------------------------------ */
+
+/** Photo may arrive as `photoUrl` / `photo` / `avatarUrl` / `imageUrl` / `image`. */
+export function staffPhotoOf(raw: unknown): string | undefined {
+  const r = (raw ?? {}) as Record<string, unknown>;
+  for (const k of ["photoUrl", "photo", "avatarUrl", "imageUrl", "image"]) {
+    const v = r[k];
+    if (typeof v === "string" && v.trim()) return v;
+    // Backend may nest the file record: { photo: { url } }.
+    if (v !== null && typeof v === "object") {
+      const nested = (v as Record<string, unknown>).url ?? (v as Record<string, unknown>).secureUrl;
+      if (typeof nested === "string" && nested.trim()) return nested;
+    }
+  }
+  return undefined;
+}
+
+/** Backend id may be `id` / `_id` / `staffId`. */
+export function staffIdOf(raw: unknown, fallback = ""): string {
+  const r = (raw ?? {}) as Record<string, unknown>;
+  for (const k of ["id", "_id", "staffId"]) {
+    const v = r[k];
+    if (typeof v === "string" && v.trim()) return v;
+    if (typeof v === "number" && Number.isFinite(v)) return String(v);
+  }
+  return fallback;
+}
+
+/** Normalize one backend staff record (canonical + legacy field variants). */
+export function normalizeStaff(raw: unknown): Staff {
+  const r = (raw ?? {}) as Record<string, unknown>;
+  const str = (v: unknown): string => (typeof v === "string" ? v : String(v ?? ""));
+  const pick = (...keys: string[]): unknown => {
+    for (const k of keys) {
+      const v = r[k];
+      if (v !== undefined && v !== null && v !== "") return v;
+    }
+    return undefined;
+  };
+  const numOrUndef = (v: unknown): number | undefined => {
+    if (v === undefined || v === null || v === "") return undefined;
+    const n = typeof v === "string" ? Number(v) : (v as number);
+    return Number.isFinite(n) ? n : undefined;
+  };
+  const rawStatus = str(pick("status", "employmentStatus") || "ACTIVE").toUpperCase();
+  const status: Staff["status"] =
+    rawStatus === "ACTIVE" ||
+    rawStatus === "ON LEAVE" ||
+    rawStatus === "ON_LEAVE" ||
+    rawStatus === "INACTIVE"
+      ? rawStatus === "ON_LEAVE"
+        ? "ON LEAVE"
+        : (rawStatus as Staff["status"])
+      : "ACTIVE";
+  return {
+    ...r,
+    id: staffIdOf(r),
+    name: str(pick("name", "fullName", "staffName") || "Staff"),
+    role: str(pick("role", "position", "designation") || ""),
+    phone: str(pick("phone", "phoneNumber", "mobile", "contact") || ""),
+    email: str(pick("email") || "") || undefined,
+    shift: str(pick("shift", "dutyShift") || "") || undefined,
+    status,
+    salary: numOrUndef(pick("salary", "monthlySalary", "monthly_salary")),
+    emergencyContact:
+      str(pick("emergencyContact", "emergencyPhone", "emergency_contact") || "") || undefined,
+    joinDate:
+      str(pick("joinDate", "joinedAt", "joiningDate", "joinedDate", "createdAt") || "") ||
+      undefined,
+    notes: str(pick("notes", "remarks") || "") || undefined,
+    address: str(pick("address") || "") || undefined,
+    hostelId: str(pick("hostelId", "hostel_id") || "") || undefined,
+    hostelName: str(pick("hostelName", "hostel") || "") || undefined,
+    photoUrl: staffPhotoOf(r),
+  };
+}
+
+/** Normalize list payloads: raw array, `{ data: [...] }`, `{ staff: [...] }`. */
+export function normalizeStaffList(payload: unknown): Staff[] {
+  const items = toPaginated<unknown>(payload).items;
+  if (items.length > 0) return items.map(normalizeStaff);
+  const root = (payload ?? {}) as Record<string, unknown>;
+  for (const k of ["staff", "staffs", "members", "results", "rows"]) {
+    if (Array.isArray(root[k])) return (root[k] as unknown[]).map(normalizeStaff);
+  }
+  return [];
+}
+
 /**
  * Normalize the aggregate GET /owner/dashboard payload into `OwnerDashboard`.
  * The axios layer's `unwrap()` returns only the `data` array, so this also
@@ -1835,17 +1951,137 @@ export function normalizeExpense(raw: unknown): Expense {
     updatedAt: pick("updatedAt", "updated_at") as string | undefined,
   };
 }
+/* ------------------------------------------------------------------ */
+/* Invoice normalizers (owner dashboard)                             */
+/* ------------------------------------------------------------------ */
+
+const INVOICE_MONTH_LABELS = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+] as const;
+
+/** "2026-09" → { month: 9, year: 2026 }; "Sep 2026" → same. */
+export function splitBillingMonthInput(input: string): { month: number; year: number } | null {
+  const t = (input ?? "").trim();
+  let m = t.match(/^(\d{4})-(\d{1,2})$/);
+  if (m) return { year: Number(m[1]), month: Number(m[2]) };
+  m = t.match(/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+(\d{4})$/i);
+  if (m) {
+    const idx = INVOICE_MONTH_LABELS.findIndex(
+      (x) => x.toLowerCase() === m[1].slice(0, 3).toLowerCase()
+    );
+    if (idx >= 0) return { month: idx + 1, year: Number(m[2]) };
+  }
+  return null;
+}
+
+export function invoiceMonthLabel(month?: number | string, year?: number | string): string {
+  const mo = typeof month === "string" ? Number(month) : month;
+  if (!mo || mo < 1 || mo > 12) return typeof month === "string" && month ? month : "—";
+  const short = INVOICE_MONTH_LABELS[mo - 1];
+  const y = typeof year === "string" ? Number(year) : year;
+  return y && y > 0 ? `${short} ${y}` : short;
+}
+
+/** Normalize one backend invoice row (fee-ledger + dedicated-invoice variants). */
+export function normalizeInvoice(raw: unknown): Invoice {
+  const r = (raw ?? {}) as Record<string, unknown>;
+  const nested = [r.resident, r.user, r.fee].filter(
+    (v): v is Record<string, unknown> => typeof v === "object" && v !== null
+  );
+  const pick = (...keys: string[]): unknown => {
+    for (const scope of [r, ...nested]) {
+      for (const k of keys) {
+        const v = scope[k];
+        if (v !== undefined && v !== null && v !== "") return v;
+      }
+    }
+    return undefined;
+  };
+  const str = (v: unknown): string => (typeof v === "string" ? v : String(v ?? ""));
+  const email = str(pick("residentEmail", "email", "resident_email", "gmail", "mail") || "");
+  const name =
+    str(pick("residentName", "name", "fullName", "resident_name") || "") ||
+    [pick("firstName", "first_name"), pick("lastName", "last_name")]
+      .filter((v) => typeof v === "string" && (v as string).trim())
+      .join(" ") ||
+    "Resident";
+  return {
+    ...r,
+    id: str(pick("id", "_id", "invoiceId", "feeId") || `inv-${Date.now()}`),
+    hostelId: (pick("hostelId", "hostel_id") as string | undefined) ?? undefined,
+    residentId: (pick("residentId", "resident_id") as string | undefined) ?? undefined,
+    residentName: name,
+    residentEmail: email || undefined,
+    amount:
+      (pick("amount", "totalPayable", "total_payable", "total") as number | string | undefined) ??
+      0,
+    billingMonth: pick("billingMonth", "billing_month", "month") as number | string | undefined,
+    billingYear: pick("billingYear", "billing_year", "year") as number | string | undefined,
+    dueDate: str(pick("dueDate", "due_date", "dueDateAt") || ""),
+    status: String(pick("status") ?? "DRAFT").toUpperCase(),
+  };
+}
+
+/** Normalize list payloads: raw array, `{ data: [...] }`, `{ invoices: [...] }`. */
+export function normalizeInvoiceList(payload: unknown): Invoice[] {
+  const items = toPaginated<unknown>(payload).items;
+  if (items.length > 0) return items.map(normalizeInvoice);
+  const root = (payload ?? {}) as Record<string, unknown>;
+  for (const k of ["invoices", "fees", "bills", "results", "rows"]) {
+    if (Array.isArray(root[k])) return (root[k] as unknown[]).map(normalizeInvoice);
+  }
+  return [];
+}
 
 /** Normalize `GET /subscriptions/current` (nullable sub + plan + usage). */
 export function normalizeSubscriptionCurrent(raw: unknown): SubscriptionCurrent {
   const data = unwrap<Record<string, unknown>>(raw) ?? {};
-  const rawSub = (data.subscription ?? data.current ?? null) as Record<string, unknown> | null;
+  // Tolerate root subscription object, nested subscription/current/activeSubscription, or flat data
+  const rawSub = (data.subscription ??
+    data.current ??
+    data.activeSubscription ??
+    data.currentSubscription ??
+    (typeof data === "object" &&
+    ("plan" in data ||
+      "currentPlan" in data ||
+      "planName" in data ||
+      "status" in data ||
+      "id" in data)
+      ? data
+      : null)) as Record<string, unknown> | null;
+  const nested = (data.plan ?? rawSub?.plan) as Record<string, unknown> | string | null | undefined;
+  const extractedPlan = toPlanId(
+    rawSub?.plan ??
+      rawSub?.planName ??
+      rawSub?.currentPlan ??
+      rawSub?.tier ??
+      rawSub?.name ??
+      data.plan ??
+      data.currentPlan ??
+      data.planName ??
+      (nested !== null && typeof nested === "object"
+        ? ((nested as Record<string, unknown>).id ?? (nested as Record<string, unknown>).name)
+        : nested)
+  );
   const hasSub =
     rawSub !== null &&
     typeof rawSub === "object" &&
-    ("id" in rawSub || "plan" in rawSub || "status" in rawSub);
-  const nested = data.plan as Record<string, unknown> | string | null | undefined;
-  const limits = (data.limits ?? data.usage ?? null) as Record<string, unknown> | null;
+    ("id" in rawSub || "plan" in rawSub || "status" in rawSub || extractedPlan !== undefined);
+  const limits = (data.limits ?? data.usage ?? rawSub?.limits ?? rawSub?.usage ?? null) as Record<
+    string,
+    unknown
+  > | null;
   const num = (v: unknown): number | undefined => {
     if (v === undefined || v === null || v === "") return undefined;
     const n = typeof v === "string" ? Number(v) : (v as number);
@@ -1860,24 +2096,38 @@ export function normalizeSubscriptionCurrent(raw: unknown): SubscriptionCurrent 
   return {
     subscription: hasSub
       ? {
-          id: rawSub?.id != null ? String(rawSub.id) : undefined,
-          plan: toPlanId(rawSub?.plan ?? rawSub?.planName),
-          status: toSubStatus(rawSub?.status),
-          billingCycle: toBilling(rawSub?.billingCycle),
+          id:
+            rawSub?.id != null ? String(rawSub.id) : data.id != null ? String(data.id) : undefined,
+          plan: extractedPlan,
+          status: toSubStatus(rawSub?.status ?? data.status ?? "ACTIVE"),
+          billingCycle: toBilling(rawSub?.billingCycle ?? data.billingCycle),
           price:
-            typeof rawSub?.price === "number" || typeof rawSub?.price === "string"
-              ? rawSub.price
+            typeof (rawSub?.price ?? data.price) === "number" ||
+            typeof (rawSub?.price ?? data.price) === "string"
+              ? ((rawSub?.price ?? data.price) as string | number)
               : undefined,
-          currency: typeof rawSub?.currency === "string" ? rawSub.currency : undefined,
-          startDate: typeof rawSub?.startDate === "string" ? rawSub.startDate : undefined,
+          currency:
+            typeof (rawSub?.currency ?? data.currency) === "string"
+              ? ((rawSub?.currency ?? data.currency) as string)
+              : undefined,
+          startDate:
+            typeof (rawSub?.startDate ?? data.startDate) === "string"
+              ? ((rawSub?.startDate ?? data.startDate) as string)
+              : undefined,
           endDate:
-            rawSub?.endDate === null
+            rawSub?.endDate === null || data.endDate === null
               ? null
-              : typeof rawSub?.endDate === "string"
-                ? rawSub.endDate
+              : typeof (rawSub?.endDate ?? data.endDate) === "string"
+                ? ((rawSub?.endDate ?? data.endDate) as string)
                 : undefined,
-          autoRenew: typeof rawSub?.autoRenew === "boolean" ? rawSub.autoRenew : undefined,
-          hostelId: typeof rawSub?.hostelId === "string" ? rawSub.hostelId : undefined,
+          autoRenew:
+            typeof (rawSub?.autoRenew ?? data.autoRenew) === "boolean"
+              ? ((rawSub?.autoRenew ?? data.autoRenew) as boolean)
+              : undefined,
+          hostelId:
+            typeof (rawSub?.hostelId ?? data.hostelId) === "string"
+              ? ((rawSub?.hostelId ?? data.hostelId) as string)
+              : undefined,
         }
       : null,
     plan:
@@ -1889,7 +2139,9 @@ export function normalizeSubscriptionCurrent(raw: unknown): SubscriptionCurrent 
     limits: limits
       ? {
           residentCount: num(limits.residentCount ?? limits.residentsUsed ?? limits.used),
-          residentLimit: numOrNull(limits.residentLimit ?? limits.residentsLimit ?? limits.limit),
+          residentLimit:
+            numOrNull(limits.residentLimit ?? limits.residentsLimit ?? limits.limit) ??
+            (extractedPlan === "PRO" || extractedPlan === "ENTERPRISE" ? null : 10),
           residentLimitReached:
             typeof limits.residentLimitReached === "boolean"
               ? limits.residentLimitReached
@@ -1904,10 +2156,28 @@ export function normalizeSubscriptionCurrent(raw: unknown): SubscriptionCurrent 
   };
 }
 
-function toPlanId(v: unknown): SubscriptionPlanId | undefined {
+export function toPlanId(v: unknown): SubscriptionPlanId | undefined {
   if (v === undefined || v === null || v === "") return undefined;
-  const s = String(v).toUpperCase();
-  if (s === "FREE" || s === "BASIC" || s === "PRO" || s === "ENTERPRISE") return s;
+  if (typeof v === "object") {
+    const obj = v as Record<string, unknown>;
+    return toPlanId(
+      obj.id ??
+        obj.planId ??
+        obj.plan_id ??
+        obj.name ??
+        obj.code ??
+        obj.plan ??
+        obj.tier ??
+        obj.planName
+    );
+  }
+  const s = String(v).toUpperCase().trim();
+  if (s === "FREE" || s === "BASIC" || s === "PRO" || s === "ENTERPRISE")
+    return s as SubscriptionPlanId;
+  if (s.includes("ENTERPRISE")) return "ENTERPRISE";
+  if (s.includes("PRO")) return "PRO";
+  if (s.includes("BASIC")) return "BASIC";
+  if (s.includes("FREE")) return "FREE";
   return undefined;
 }
 
@@ -1917,7 +2187,13 @@ function toSubStatus(
   ? import("./api-types").SubscriptionStatus | undefined
   : never {
   if (v === undefined || v === null || v === "") return undefined as never;
-  return String(v).toUpperCase() as never;
+  const s = String(v).toUpperCase().trim();
+  if (s.includes("ACTIVE") || s === "PAID" || s === "APPROVED") return "ACTIVE" as never;
+  if (s.includes("PENDING")) return "PENDING" as never;
+  if (s.includes("CANCEL")) return "CANCELLED" as never;
+  if (s.includes("EXPIRE")) return "EXPIRED" as never;
+  if (s.includes("REJECT")) return "REJECTED" as never;
+  return s as never;
 }
 
 function toBilling(v: unknown): import("./api-types").BillingCycle | undefined {
@@ -2174,6 +2450,24 @@ export function normalizeFacility(raw: unknown): HostelFacility {
   };
 }
 
+/** Serialize a staff payload to multipart FormData (photo under `photo` key). */
+function staffToFormData(payload: Record<string, unknown>, photoFile?: File | null) {
+  const form = new FormData();
+  Object.entries(payload).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === "") return;
+    if (value instanceof File) return; // file parts are appended explicitly below
+    if (Array.isArray(value)) {
+      form.append(key, value.join(","));
+      return;
+    }
+    form.append(key, String(value));
+  });
+  // Backend strips stray `photo` text parts (`stripFileFields('photo')`) and only
+  // uploads the real file buffer, so append the file ONLY (never a text field).
+  if (photoFile) form.append("photo", photoFile, photoFile.name);
+  return form;
+}
+
 /** Serialize a room payload to multipart FormData (image under `image` key). */
 function roomToFormData(payload: CreateRoomPayload | UpdateRoomPayload, imageFile?: File | null) {
   const form = new FormData();
@@ -2373,10 +2667,10 @@ export const hostelGhar = {
      * (explicit param or `X-Hostel-Id`). Null subscription = FREE fallback.
      * 200 `Current subscription fetched successfully.`
      */
-    current: (hostelId: string) =>
+    current: (hostelId?: string) =>
       getWithRetry<SubscriptionCurrent | ApiEnvelope<SubscriptionCurrent>>(
         `${PREFIX}/subscriptions/current`,
-        { hostelId } as unknown as ListParams
+        hostelId ? ({ hostelId } as unknown as ListParams) : undefined
       ),
     /**
      * POST /subscriptions/subscribe — owner/admin, hostel required.
@@ -2821,6 +3115,136 @@ export const hostelGhar = {
       api.patch<Expense | ApiEnvelope<Expense>>(`${PREFIX}/expenses/${id}`, payload),
     /** DELETE /expenses/:id — removes an expense. */
     remove: (id: string) => api.delete<{ message?: string }>(`${PREFIX}/expenses/${id}`),
+  },
+
+  invoices: {
+    /**
+     * Backend `feeRouter.post('/invoices', ...ownerOrAdmin, sensitiveActionLimiter,
+     * `normalizeInvoiceFields`, `validateDto(CreateInvoiceDto)`, invoiceController.createInvoice)`.
+     * `CreateInvoiceDto` REQUIRES `residentName` (2–200 char string) alongside
+     * `residentId` — send both, plus nested `resident: { id, name }` for
+     * `normalizeInvoiceFields`. Numeric month/year canonical.
+     */
+    create: (payload: CreateInvoicePayload) => {
+      const residentName = String(payload.residentName ?? "")
+        .trim()
+        .slice(0, 200);
+      const body: Record<string, unknown> = {
+        hostelId: payload.hostelId,
+        residentId: payload.residentId,
+        residentName,
+        resident: { id: payload.residentId, name: residentName },
+        amount: Number(payload.amount),
+        billingMonth: Number(payload.billingMonth),
+        billingYear: Number(payload.billingYear),
+      };
+      if (payload.dueDate) body.dueDate = payload.dueDate;
+      if (payload.status) body.status = payload.status;
+      if (payload.feeType) body.feeType = payload.feeType;
+      if (payload.notes) body.notes = payload.notes;
+      return api.post<Invoice | ApiEnvelope<Invoice>>(`${PREFIX}/fees/invoices`, body, {
+        headers: idemHeaders(newIdempotencyKey()),
+      });
+    },
+    /**
+     * List invoices for a hostel. No dedicated GET /invoices router is wired in
+     * the dashboard yet — this tries the dedicated route first and falls back to
+     * the owner fee ledger (`GET /fees/hostels/:hostelId`), which carries the
+     * same invoice rows (resident, amount, month, status).
+     */
+    list: async (params: InvoiceListParams & { hostelId: string }) => {
+      try {
+        return await getWithRetry<Invoice[] | ApiEnvelope<Invoice[]>>(
+          `${PREFIX}/fees/invoices`,
+          cleanHostelParams(params) as unknown as ListParams
+        );
+      } catch {
+        return getWithRetry<Fee[] | ApiEnvelope<Fee[]>>(
+          `${PREFIX}/fees/hostels/${params.hostelId}`,
+          cleanHostelParams({ status: params.status }) as unknown as ListParams
+        );
+      }
+    },
+  },
+
+  staff: {
+    /**
+     * Backend `staffRouter` — OWNER + ADMIN (authenticate + requireRoles).
+     * - `GET /staff` — list (?hostelId=&role=&status=&search=&page=&limit=)
+     * - `POST /staff` — create (`uploadStaffPhoto` multipart `photo` + `validateDto(CreateStaffDto)`)
+     * - `GET /staff/:id` — single staff (`requireParam('id')`)
+     * - `PUT /staff/:id` — full replace (`uploadStaffPhoto` + `validateDto(UpdateStaffDto)`)
+     * - `PATCH /staff/:id` — partial update (same middleware as PUT)
+     * - `DELETE /staff/:id` — remove
+     */
+    list: (params?: StaffListParams) =>
+      getWithRetry<Staff[] | ApiEnvelope<Staff[]>>(
+        `${PREFIX}/staff`,
+        cleanHostelParams(params) as unknown as ListParams
+      ),
+    /** GET /staff/:id — single staff record. */
+    get: (id: string) => getWithRetry<Staff | ApiEnvelope<Staff>>(`${PREFIX}/staff/${id}`),
+    /**
+     * POST /staff — add staff.
+     * Sends multipart `photo` when `payload.photo` is a File
+     * (matches `uploadStaffPhoto` + `stripFileFields('photo')`);
+     * otherwise JSON. `hostelId` defaults to the active hostel cookie.
+     */
+    create: (payload: CreateStaffPayload, hostelId?: string | null) => {
+      const hid = validHostelId(
+        hostelId ?? (payload.hostelId as string | undefined) ?? getHostelId()
+      );
+      const body: Record<string, unknown> = { ...payload };
+      delete body.photo;
+      if (hid) body.hostelId = hid;
+      else delete body.hostelId;
+      if (payload.photo instanceof File) {
+        return api.post<Staff | ApiEnvelope<Staff>>(
+          `${PREFIX}/staff`,
+          staffToFormData(body, payload.photo),
+          multipartConfig(idemHeaders(newIdempotencyKey()))
+        );
+      }
+      return api.post<Staff | ApiEnvelope<Staff>>(`${PREFIX}/staff`, body, {
+        headers: idemHeaders(newIdempotencyKey()),
+      });
+    },
+    /**
+     * PUT /staff/:id — full replace (`UpdateStaffDto`, multipart `photo` supported).
+     */
+    update: (id: string, payload: UpdateStaffPayload, photoFile?: File | null) => {
+      if (photoFile instanceof File) {
+        const body: Record<string, unknown> = { ...payload };
+        delete body.photo;
+        return api.put<Staff | ApiEnvelope<Staff>>(
+          `${PREFIX}/staff/${id}`,
+          staffToFormData(body, photoFile),
+          multipartConfig()
+        );
+      }
+      const body: Record<string, unknown> = { ...payload };
+      delete body.photo;
+      return api.put<Staff | ApiEnvelope<Staff>>(`${PREFIX}/staff/${id}`, body);
+    },
+    /**
+     * PATCH /staff/:id — partial update (multipart `photo` supported).
+     */
+    patch: (id: string, payload: UpdateStaffPayload, photoFile?: File | null) => {
+      if (photoFile instanceof File) {
+        const body: Record<string, unknown> = { ...payload };
+        delete body.photo;
+        return api.patch<Staff | ApiEnvelope<Staff>>(
+          `${PREFIX}/staff/${id}`,
+          staffToFormData(body, photoFile),
+          multipartConfig()
+        );
+      }
+      const body: Record<string, unknown> = { ...payload };
+      delete body.photo;
+      return api.patch<Staff | ApiEnvelope<Staff>>(`${PREFIX}/staff/${id}`, body);
+    },
+    /** DELETE /staff/:id — removes a staff member. */
+    remove: (id: string) => api.delete<{ message?: string }>(`${PREFIX}/staff/${id}`),
   },
 
   paymentQrs: {

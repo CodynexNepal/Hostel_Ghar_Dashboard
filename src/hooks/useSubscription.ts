@@ -30,7 +30,7 @@ import type { SubscriptionPlan } from "@/types/auth";
  * render the "link a hostel" state (never a backend 400).
  */
 export function useSubscription() {
-  const { syncLiveSubscription } = useAuth();
+  const { user, syncLiveSubscription } = useAuth();
   const [plans, setPlans] = useState<BackendPlan[]>([]);
   const [current, setCurrent] = useState<SubscriptionCurrent | null>(null);
   const [history, setHistory] = useState<SubscriptionHistoryItem[]>([]);
@@ -54,7 +54,8 @@ export function useSubscription() {
         }
         setPlans(p);
 
-        const hid = await resolveOwnerHostelId(preferred ?? getHostelId());
+        const candidateHostel = preferred ?? user?.hostelId ?? getHostelId();
+        const hid = await resolveOwnerHostelId(candidateHostel);
         setHostelId(hid);
         const uuid = validHostelId(hid);
 
@@ -72,29 +73,82 @@ export function useSubscription() {
             chk = null;
           }
         }
-        setCurrent(cur);
-        setCheck(chk);
 
+        // Direct query fallback: hit GET /subscriptions/current without hostelId
+        if (!cur?.subscription || cur.subscription.plan === "FREE") {
+          try {
+            const direct = normalizeSubscriptionCurrent(
+              (await hostelGhar.subscriptions.current()).data
+            );
+            if (direct?.subscription && direct.subscription.plan !== "FREE") {
+              cur = direct;
+            } else if (!cur) {
+              cur = direct;
+            }
+          } catch {
+            /* ignore direct query error */
+          }
+        }
+
+        let hist: SubscriptionHistoryItem[] = [];
         try {
-          setHistory(normalizeSubscriptionHistory((await hostelGhar.subscriptions.history()).data));
+          hist = normalizeSubscriptionHistory((await hostelGhar.subscriptions.history()).data);
+          setHistory(hist);
         } catch {
+          hist = [];
           setHistory([]);
         }
 
-        // Mirror the LIVE plan into global auth state so plan-gated UI
-        // matches the backend on every page (AuthProvider also fetches this).
-        syncLiveSubscription(
-          (cur?.subscription?.plan ?? chk?.currentPlan ?? "FREE") as SubscriptionPlan,
-          cur?.limits?.residentCount ?? chk?.currentCount ?? 0,
-          cur?.limits?.residentLimit ?? chk?.limit ?? null
+        // Live backend history verification: if history has an ACTIVE paid plan, use it
+        const activePaidHist = hist.find(
+          (h) => h.status === "ACTIVE" && h.plan && h.plan !== "FREE"
         );
+        if ((!cur?.subscription || cur.subscription.plan === "FREE") && activePaidHist?.plan) {
+          cur = {
+            ...(cur ?? { plan: null, limits: null, daysRemaining: null }),
+            subscription: {
+              id: activePaidHist.id,
+              plan: activePaidHist.plan,
+              status: "ACTIVE",
+              billingCycle: activePaidHist.billingCycle ?? "MONTHLY",
+              price: activePaidHist.price,
+              currency: activePaidHist.currency,
+              startDate: activePaidHist.startDate,
+              endDate: activePaidHist.endDate,
+            },
+          };
+        }
+
+        setCurrent(cur);
+        setCheck(chk);
+
+        // Derive plan with priority to backend paid active plan
+        const derivedPlan = (cur?.subscription?.plan ??
+          chk?.currentPlan ??
+          activePaidHist?.plan ??
+          user?.subscription.plan ??
+          "FREE") as SubscriptionPlan;
+        const derivedUsed =
+          cur?.limits?.residentCount ?? chk?.currentCount ?? user?.subscription.residentsUsed ?? 0;
+        const derivedLimit =
+          cur?.limits?.residentLimit ??
+          chk?.limit ??
+          (derivedPlan === "PRO" || derivedPlan === "ENTERPRISE" ? null : 10);
+
+        // Mirror the LIVE plan into global auth state so plan-gated UI matches backend everywhere
+        syncLiveSubscription(derivedPlan, derivedUsed, derivedLimit);
       } catch (e) {
         setError(toApiError(e).message);
       } finally {
         setIsLoading(false);
       }
     },
-    [syncLiveSubscription]
+    [
+      syncLiveSubscription,
+      user?.hostelId,
+      user?.subscription.plan,
+      user?.subscription.residentsUsed,
+    ]
   );
 
   useEffect(() => {

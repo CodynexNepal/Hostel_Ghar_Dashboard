@@ -6,12 +6,14 @@ import { useAuth } from "@/hooks/useAuth";
 import { useSidebar } from "@/hooks/useSidebar";
 import { initials } from "@/lib/utils";
 import { cn } from "@/lib/utils";
+import { ResidentPlanBadge } from "@/components/resident/ResidentPlanBadge";
 
 export function Header({ title, subtitle }: { title: string; subtitle?: string }) {
-  const { user, plan, subscriptionLoading } = useAuth();
+  const { user, plan, subscriptionLoading, role } = useAuth();
   const { collapsed, toggleCollapsed, setMobileOpen } = useSidebar();
   const [showSearch, setShowSearch] = useState(false);
   const planLabel = plan ?? user?.subscription.plan ?? "FREE";
+  const isResident = role === "RESIDENT" || user?.role === "RESIDENT";
   return (
     <header className="z-40 shrink-0 border-b border-surface-border bg-white/95 backdrop-blur">
       <div className="flex h-16 items-center gap-2 px-4 sm:gap-3 sm:px-6">
@@ -66,18 +68,22 @@ export function Header({ title, subtitle }: { title: string; subtitle?: string }
         </button>
         {user && (
           <div className="flex items-center gap-2">
-            <Link
-              href="/subscription"
-              title="View subscription"
-              aria-label={`Current plan ${planLabel} — view subscription`}
-              className={cn(
-                "inline-flex items-center gap-1 rounded-full bg-brand-muted px-2.5 py-1 text-xs font-bold text-brand-ink transition-colors hover:bg-brand",
-                subscriptionLoading && "animate-pulse opacity-70"
-              )}
-            >
-              <Crown className="h-3.5 w-3.5" aria-hidden />
-              {subscriptionLoading ? "…" : planLabel}
-            </Link>
+            {isResident ? (
+              <ResidentPlanBadge />
+            ) : (
+              <Link
+                href="/subscription"
+                title="View subscription"
+                aria-label={`Current plan ${planLabel} — view subscription`}
+                className={cn(
+                  "inline-flex items-center gap-1 rounded-full bg-brand-muted px-2.5 py-1 text-xs font-bold text-brand-ink transition-colors hover:bg-brand",
+                  subscriptionLoading && "animate-pulse opacity-70"
+                )}
+              >
+                <Crown className="h-3.5 w-3.5" aria-hidden />
+                {subscriptionLoading ? "…" : planLabel}
+              </Link>
+            )}
             <span
               className="hidden h-9 w-9 items-center justify-center rounded-full bg-brand-ink text-xs font-bold text-brand md:flex"
               aria-hidden

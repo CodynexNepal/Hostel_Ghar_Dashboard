@@ -2,6 +2,7 @@ import {
   BarChart3,
   BedDouble,
   Building2,
+  CalendarCheck2,
   CreditCard,
   FileText,
   LayoutDashboard,
@@ -53,6 +54,7 @@ export const OWNER_NAVIGATION: NavItem[] = [
       { label: "Import Residents", href: "/residents/import", permission: "IMPORT_RESIDENTS" },
       { label: "Leaves", href: "/leaves", permission: "VIEW_RESIDENTS" },
       { label: "Leave Types", href: "/leaves/types", permission: "VIEW_RESIDENTS" },
+      { label: "Check-In Activity", href: "/residents/attendance", permission: "VIEW_RESIDENTS" },
     ],
   },
   {
@@ -75,6 +77,7 @@ export const OWNER_NAVIGATION: NavItem[] = [
 
 export const RESIDENT_NAVIGATION: NavItem[] = [
   { label: "Dashboard", href: "/resident", icon: LayoutDashboard },
+  { label: "Check-In / Out", href: "/resident/attendance", icon: CalendarCheck2 },
   { label: "My Room", href: "/resident/room", icon: BedDouble },
   { label: "My Payments", href: "/resident/payments", icon: CreditCard },
   { label: "Payment History", href: "/resident/history", icon: Receipt },

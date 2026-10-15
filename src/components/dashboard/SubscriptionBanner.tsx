@@ -60,9 +60,6 @@ export function SubscriptionBanner() {
               <Crown className="h-5 w-5" />
             </span>
             <div className="min-w-0">
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500">
-                Current plan · visible right after login
-              </p>
               <p className="mt-0.5 flex flex-wrap items-center gap-2 text-lg font-bold text-neutral-900">
                 {plan}
                 {liveStatus && (

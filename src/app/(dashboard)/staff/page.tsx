@@ -10,26 +10,103 @@ import { Card } from "@/components/ui/Card";
 import { StaffModal, type StaffModalMode } from "@/components/staff/StaffModal";
 import { staffApi } from "@/lib/staff-api";
 import type { StaffMember } from "@/lib/staff-store";
+import { getHostelId, toApiError } from "@/lib/axios";
+import {
+  hostelGhar,
+  normalizeStaffList,
+  normalizeStaff,
+  staffIdOf,
+  staffPhotoOf,
+  unwrap,
+} from "@/lib/hostelGhar";
 import { useToast } from "@/hooks/useToast";
+import { useAuth } from "@/hooks/useAuth";
 import { Plus, Eye, Pencil, Trash2 } from "lucide-react";
+
+/** Map backend `Staff` → local `StaffMember` UI shape (keeps table + modal stable). */
+function toStaffMember(raw: unknown): StaffMember {
+  const n = normalizeStaff(raw);
+  const salaryRaw = n.salary ?? n.monthlySalary;
+  const salaryNum =
+    typeof salaryRaw === "string"
+      ? Number(salaryRaw)
+      : typeof salaryRaw === "number"
+        ? salaryRaw
+        : undefined;
+  const statusRaw = String(n.status ?? "ACTIVE").toUpperCase();
+  const status: StaffMember["status"] =
+    statusRaw === "ACTIVE"
+      ? "ACTIVE"
+      : statusRaw === "ON LEAVE" || statusRaw === "ON_LEAVE"
+        ? "ON LEAVE"
+        : "INACTIVE";
+  return {
+    id: staffIdOf(n, String(n.id ?? "")),
+    name: String(n.name ?? "Staff"),
+    role: String(n.role ?? n.position ?? ""),
+    phone: String(n.phone ?? ""),
+    shift: String(n.shift ?? "Day"),
+    status,
+    email: typeof n.email === "string" ? n.email : undefined,
+    salary: Number.isFinite(salaryNum as number) ? (salaryNum as number) : undefined,
+    emergencyContact:
+      typeof n.emergencyContact === "string"
+        ? n.emergencyContact
+        : typeof n.emergencyPhone === "string"
+          ? (n.emergencyPhone as string)
+          : undefined,
+    joinDate:
+      typeof n.joinDate === "string"
+        ? n.joinDate
+        : typeof n.joinedAt === "string"
+          ? (n.joinedAt as string)
+          : undefined,
+    notes: typeof n.notes === "string" ? n.notes : undefined,
+    avatarUrl: staffPhotoOf(n),
+    hostelId: typeof n.hostelId === "string" ? n.hostelId : undefined,
+    createdAt: typeof n.createdAt === "string" ? n.createdAt : undefined,
+    updatedAt: typeof n.updatedAt === "string" ? n.updatedAt : undefined,
+  };
+}
 
 export default function StaffPage() {
   const { success, error: toastError } = useToast();
+  const { user } = useAuth();
   const [staffList, setStaffList] = useState<StaffMember[]>(() => staffApi.getLocalStaff());
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [usingFallback, setUsingFallback] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<StaffModalMode>("create");
   const [selectedStaff, setSelectedStaff] = useState<StaffMember | null>(null);
 
   const refreshStaff = useCallback(async () => {
+    setIsLoading(true);
+    setLoadError(null);
+    // GET /staff — backend first (hostel-scoped), local mock fallback offline.
     try {
-      const res = await staffApi.get();
-      if (Array.isArray(res.data)) {
-        setStaffList(res.data);
+      const hostelId = getHostelId() ?? user?.hostelId ?? undefined;
+      const res = await hostelGhar.staff.list(hostelId ? { hostelId, limit: 100 } : { limit: 100 });
+      const items = normalizeStaffList(unwrap<unknown>(res.data));
+      setStaffList(items.map(toStaffMember));
+      setUsingFallback(false);
+      return;
+    } catch (err) {
+      // Backend offline / 404 (route not mounted yet) → local directory.
+      console.warn("[staff] GET /staff failed, local fallback:", toApiError(err).message);
+      try {
+        const res = await staffApi.get();
+        if (Array.isArray(res.data)) setStaffList(res.data);
+        else setStaffList(staffApi.getLocalStaff());
+      } catch {
+        setStaffList(staffApi.getLocalStaff());
       }
-    } catch {
-      setStaffList(staffApi.getLocalStaff());
+      setUsingFallback(true);
+      setLoadError(toApiError(err).message);
+    } finally {
+      setIsLoading(false);
     }
-  }, []);
+  }, [user?.hostelId]);
 
   useEffect(() => {
     void refreshStaff();
@@ -51,6 +128,17 @@ export default function StaffPage() {
     setSelectedStaff(staff);
     setModalMode("view");
     setModalOpen(true);
+    // GET /staff/:id — refresh the detail row in the background.
+    void (async () => {
+      try {
+        const res = await hostelGhar.staff.get(staff.id);
+        const fresh = toStaffMember(unwrap<unknown>(res.data));
+        setSelectedStaff(fresh);
+        setStaffList((prev) => prev.map((s) => (s.id === fresh.id ? fresh : s)));
+      } catch {
+        /* offline — keep the cached row */
+      }
+    })();
   }
 
   function handleOpenEdit(staff: StaffMember) {
@@ -63,13 +151,21 @@ export default function StaffPage() {
     if (!window.confirm(`Are you sure you want to remove ${staff.name}?`)) {
       return;
     }
+    // DELETE /staff/:id — backend first, local fallback offline.
     try {
-      await staffApi.delete(staff.id);
+      await hostelGhar.staff.remove(staff.id);
       success("Staff Removed", `${staff.name} has been removed.`);
       await refreshStaff();
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Failed to delete staff";
-      toastError("Error", msg);
+    } catch (err) {
+      console.warn("[staff] DELETE /staff/:id failed, local fallback:", toApiError(err).message);
+      try {
+        await staffApi.delete(staff.id);
+        success("Staff Removed", `${staff.name} has been removed (offline).`);
+        await refreshStaff();
+      } catch (fallbackErr: unknown) {
+        const msg = fallbackErr instanceof Error ? fallbackErr.message : "Failed to delete staff";
+        toastError("Error", msg);
+      }
     }
   }
 
@@ -170,11 +266,28 @@ export default function StaffPage() {
     <DashboardShell title="Staff" subtitle="Hostel Ghar / Staff — roles, shifts and contact.">
       <Protected permission="MANAGE_STAFF" redirectTo="/dashboard">
         <div className="mb-4 flex items-center justify-between">
-          <p className="text-sm text-neutral-500">{staffList.length} staff members</p>
+          <p className="text-sm text-neutral-500">
+            {isLoading ? "Loading staff…" : `${staffList.length} staff members`}
+            {usingFallback && !isLoading && (
+              <span className="ml-2 rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-800">
+                offline preview
+              </span>
+            )}
+          </p>
           <Button onClick={handleOpenAdd}>
             <Plus className="h-4 w-4" /> Add Staff
           </Button>
         </div>
+
+        {loadError && usingFallback && staffList.length > 0 && (
+          <p
+            role="status"
+            className="mb-3 rounded-md bg-amber-50 px-3 py-2 text-[13px] text-amber-800"
+          >
+            Backend unreachable ({loadError}) — showing the offline directory. Adds/edits still work
+            and sync on reconnect.
+          </p>
+        )}
 
         <DataTable<StaffMember>
           columns={columns}

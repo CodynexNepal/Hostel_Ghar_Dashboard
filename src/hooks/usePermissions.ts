@@ -15,12 +15,14 @@ export function usePermissions() {
       /** True while the owner's live plan is resolving — show skeletons, not locks. */
       isPlanLoading: role === "HOSTEL_OWNER" && subscriptionLoading,
       has: (permission: Permission) => {
-        if (role === "SUPER_ADMIN" || role === "RESIDENT") return true;
+        if (role === "SUPER_ADMIN") return true;
+        if (role === "RESIDENT") return permission !== "MANAGE_SUBSCRIPTION";
         return hasPermission(plan, permission);
       },
       canAccess: (permission?: Permission) => {
         if (!permission) return true;
-        if (role === "SUPER_ADMIN" || role === "RESIDENT") return true;
+        if (role === "SUPER_ADMIN") return true;
+        if (role === "RESIDENT") return permission !== "MANAGE_SUBSCRIPTION";
         return hasPermission(plan, permission);
       },
     }),

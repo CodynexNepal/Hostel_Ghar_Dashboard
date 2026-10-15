@@ -11,13 +11,15 @@ export function canAccess(plan: SubscriptionPlan, required?: Permission): boolea
   return hasPermission(plan, required);
 }
 
-/** Super admin bypasses plan checks; residents use their own nav (no plan gating). */
 export function canRoleAccess(
   role: UserRole,
   plan: SubscriptionPlan,
   required?: Permission
 ): boolean {
   if (role === "SUPER_ADMIN") return true;
-  if (role === "RESIDENT") return true;
+  // Residents only see their own pages — never owner management screens
+  // like /subscription (MANAGE_SUBSCRIPTION). The hostel plan badge is
+  // the only subscription surface they get.
+  if (role === "RESIDENT") return required !== "MANAGE_SUBSCRIPTION";
   return canAccess(plan, required);
 }

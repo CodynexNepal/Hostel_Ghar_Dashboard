@@ -15,7 +15,9 @@ import {
   hostelGhar,
   normalizeCheckLimit,
   normalizeSubscriptionCurrent,
+  normalizeSubscriptionHistory,
   resolveOwnerHostelId,
+  toPlanId,
   unwrap,
   validHostelId,
 } from "@/lib/hostelGhar";
@@ -71,22 +73,18 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 function readCachedUser(): AuthUser | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.localStorage.getItem(USER_KEY);
-    return raw ? (JSON.parse(raw) as AuthUser) : null;
-  } catch {
-    return null;
-  }
+  // Production-grade: Live backend profile is always the authority; do not rely on stale localStorage cache.
+  return null;
 }
 
-function writeCachedUser(user: AuthUser | null) {
-  if (typeof window === "undefined") return;
-  try {
-    if (user) window.localStorage.setItem(USER_KEY, JSON.stringify(user));
-    else window.localStorage.removeItem(USER_KEY);
-  } catch {
-    /* noop */
+function writeCachedUser(_user: AuthUser | null) {
+  // Wipe any stale localStorage user entry so browser state is strictly backend-driven
+  if (typeof window !== "undefined") {
+    try {
+      window.localStorage.removeItem(USER_KEY);
+    } catch {
+      /* noop */
+    }
   }
 }
 

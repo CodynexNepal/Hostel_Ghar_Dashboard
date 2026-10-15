@@ -1,8 +1,10 @@
 "use client";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Check, Clock, Crown, History, ImagePlus } from "lucide-react";
 import { DashboardShell } from "@/components/layout/DashboardShell";
 import { Protected } from "@/components/common/Protected";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { PlatformQrPanel } from "@/components/subscription/PlatformQrPanel";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -11,6 +13,7 @@ import { Badge, statusTone } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { CardSkeleton, TableSkeleton } from "@/components/ui/Skeleton";
+import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/useToast";
 import { useSubscription } from "@/hooks/useSubscription";
 import { usePlatformCheckoutQrs } from "@/hooks/usePlatformCheckoutQrs";
@@ -61,7 +64,10 @@ function historyRowKey(r: SubscriptionHistoryItem): string {
 }
 
 export default function SubscriptionPage() {
+  const { user } = useAuth();
   const { success, error: toastError } = useToast();
+  const router = useRouter();
+  const role = user?.role ?? null;
   const {
     plans: backendPlans,
     current,
@@ -170,7 +176,7 @@ export default function SubscriptionPage() {
   if (isLoading && !current && backendPlans.length === 0) {
     return (
       <DashboardShell title="Subscription" subtitle="Manage your plan, usage and billing.">
-        <Protected permission="MANAGE_SUBSCRIPTION">
+        <Protected permission="MANAGE_SUBSCRIPTION" roles={["HOSTEL_OWNER", "SUPER_ADMIN"]}>
           <TableSkeleton rows={4} />
           <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             {PLANS.map((p) => (
@@ -184,7 +190,7 @@ export default function SubscriptionPage() {
 
   return (
     <DashboardShell title="Subscription" subtitle="Manage your plan, usage and billing.">
-      <Protected permission="MANAGE_SUBSCRIPTION">
+      <Protected permission="MANAGE_SUBSCRIPTION" roles={["HOSTEL_OWNER", "SUPER_ADMIN"]}>
         <Card className="p-5 sm:p-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>

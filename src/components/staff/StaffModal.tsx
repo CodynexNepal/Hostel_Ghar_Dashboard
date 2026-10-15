@@ -7,6 +7,9 @@ import { Input } from "@/components/ui/Input";
 import { Badge } from "@/components/ui/Badge";
 import { useToast } from "@/hooks/useToast";
 import { staffApi } from "@/lib/staff-api";
+import { getHostelId, toApiError } from "@/lib/axios";
+import { hostelGhar } from "@/lib/hostelGhar";
+import type { CreateStaffPayload } from "@/lib/api-types";
 import type { StaffMember } from "@/lib/staff-store";
 import { Edit2, Loader2, Camera, Trash2, Upload } from "lucide-react";
 
@@ -47,6 +50,9 @@ export function StaffModal({
   const [currentMode, setCurrentMode] = useState<StaffModalMode>(mode);
   const [loading, setLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Real File for multipart `photo` upload (`uploadStaffPhoto`); preview is a
+  // blob/data URL for instant UI feedback (never sent to the backend as text).
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
 
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
 
@@ -65,6 +71,8 @@ export function StaffModal({
   useEffect(() => {
     if (!open) return;
     setCurrentMode(mode);
+    setPhotoFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
 
     if (targetStaff && (mode === "edit" || mode === "view")) {
       setFormData({
@@ -110,16 +118,16 @@ export function StaffModal({
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const dataUrl = event.target?.result as string;
-      setAvatarPreview(dataUrl);
-    };
-    reader.readAsDataURL(file);
+    // Keep the real File for multipart `photo` upload; preview via object URL.
+    setPhotoFile(file);
+    if (avatarPreview?.startsWith("blob:")) URL.revokeObjectURL(avatarPreview);
+    setAvatarPreview(URL.createObjectURL(file));
   }
 
   function handleRemoveAvatar() {
+    if (avatarPreview?.startsWith("blob:")) URL.revokeObjectURL(avatarPreview);
     setAvatarPreview(null);
+    setPhotoFile(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
@@ -133,39 +141,78 @@ export function StaffModal({
       return;
     }
 
+    if (!formData.role.trim()) {
+      toastError("Validation Error", "Role is required.");
+      return;
+    }
+
     setLoading(true);
     try {
-      if (currentMode === "create") {
-        // POST: Add new staff
-        await staffApi.post({
-          name: formData.name.trim(),
-          role: formData.role,
-          phone: formData.phone.trim(),
-          shift: formData.shift,
-          status: formData.status,
-          email: formData.email.trim() || undefined,
-          salary: formData.salary ? Number(formData.salary) : undefined,
-          emergencyContact: formData.emergencyContact.trim() || undefined,
-          notes: formData.notes.trim() || undefined,
-          avatarUrl: avatarPreview || undefined,
-        });
+      // Canonical backend DTO fields (`CreateStaffDto` / `UpdateStaffDto`);
+      // frontend-only shift/status/notes ride along (stripped server-side).
+      const payload: CreateStaffPayload = {
+        name: formData.name.trim(),
+        phone: formData.phone.trim(),
+        role: formData.role,
+        email: formData.email.trim() || undefined,
+        shift: formData.shift,
+        status: formData.status,
+        salary: formData.salary ? Number(formData.salary) : undefined,
+        emergencyContact: formData.emergencyContact.trim() || undefined,
+        notes: formData.notes.trim() || undefined,
+      };
 
+      if (currentMode === "create") {
+        // POST /staff — multipart `photo` when a file was picked.
+        try {
+          await hostelGhar.staff.create(
+            { ...payload, ...(photoFile ? { photo: photoFile } : {}) },
+            getHostelId()
+          );
+        } catch (err) {
+          console.warn("[staff] POST /staff failed, local fallback:", toApiError(err).message);
+          await staffApi.post({
+            name: payload.name,
+            role: String(payload.role),
+            phone: String(payload.phone),
+            shift: String(payload.shift ?? "Day"),
+            status: (payload.status as StaffMember["status"]) ?? "ACTIVE",
+            email: typeof payload.email === "string" ? payload.email : undefined,
+            salary: typeof payload.salary === "number" ? payload.salary : undefined,
+            emergencyContact:
+              typeof payload.emergencyContact === "string" ? payload.emergencyContact : undefined,
+            notes: typeof payload.notes === "string" ? payload.notes : undefined,
+            avatarUrl:
+              avatarPreview && !avatarPreview.startsWith("blob:") ? avatarPreview : undefined,
+          });
+        }
         success("Staff Added", `${formData.name} has been added successfully.`);
       } else if (currentMode === "edit" && targetStaff) {
-        // PUT / PATCH: Update existing staff
-        await staffApi.put(targetStaff.id, {
-          name: formData.name.trim(),
-          role: formData.role,
-          phone: formData.phone.trim(),
-          shift: formData.shift,
-          status: formData.status,
-          email: formData.email.trim() || undefined,
-          salary: formData.salary ? Number(formData.salary) : undefined,
-          emergencyContact: formData.emergencyContact.trim() || undefined,
-          notes: formData.notes.trim() || undefined,
-          avatarUrl: avatarPreview || undefined,
-        });
-
+        // PUT /staff/:id → PATCH /staff/:id → local fallback.
+        try {
+          await hostelGhar.staff.update(targetStaff.id, payload, photoFile);
+        } catch (putErr) {
+          console.warn("[staff] PUT failed, trying PATCH:", toApiError(putErr).message);
+          try {
+            await hostelGhar.staff.patch(targetStaff.id, payload, photoFile);
+          } catch (patchErr) {
+            console.warn("[staff] PATCH failed, local fallback:", toApiError(patchErr).message);
+            await staffApi.put(targetStaff.id, {
+              name: payload.name,
+              role: String(payload.role ?? ""),
+              phone: String(payload.phone ?? ""),
+              shift: String(payload.shift ?? "Day"),
+              status: (payload.status as StaffMember["status"]) ?? "ACTIVE",
+              email: typeof payload.email === "string" ? payload.email : undefined,
+              salary: typeof payload.salary === "number" ? payload.salary : undefined,
+              emergencyContact:
+                typeof payload.emergencyContact === "string" ? payload.emergencyContact : undefined,
+              notes: typeof payload.notes === "string" ? payload.notes : undefined,
+              avatarUrl:
+                avatarPreview && !avatarPreview.startsWith("blob:") ? avatarPreview : undefined,
+            });
+          }
+        }
         success("Staff Updated", `Details for ${formData.name} updated successfully.`);
       }
 

@@ -26,7 +26,12 @@ export function writeLocalAttendance(rows: AttendanceRecord[]): void {
   if (typeof window === "undefined") return;
   try {
     const next = [...rows].sort((a, b) => b.date.localeCompare(a.date));
-    window.localStorage.setItem(LS_KEY, JSON.stringify(next.slice(0, 2000)));
+    const serialized = JSON.stringify(next.slice(0, 2000));
+    // Skip no-op writes AND skip the change event — hooks listening on
+    // ATTENDANCE_EVENT re-fetch + re-write, so dispatching on identical data
+    // would loop GET /resident/attendance forever.
+    if (window.localStorage.getItem(LS_KEY) === serialized) return;
+    window.localStorage.setItem(LS_KEY, serialized);
   } catch {
     /* quota — memory only */
   }
@@ -40,6 +45,12 @@ export function upsertLocal(row: AttendanceRecord): AttendanceRecord {
   else rows.unshift(row);
   writeLocalAttendance(rows);
   return row;
+}
+
+/** Remove a local-only row (e.g. ghost records written when the backend was down). */
+export function removeLocalAttendance(id: string): void {
+  const rows = readLocalAttendance().filter((r) => r.id !== id);
+  writeLocalAttendance(rows);
 }
 
 export function listLocalAttendance(filter?: {

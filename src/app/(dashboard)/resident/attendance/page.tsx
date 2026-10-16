@@ -41,7 +41,11 @@ export default function ResidentAttendancePage() {
   const { today, history, isLoading, nextAction, refresh } = useMyAttendance(identity);
 
   async function handleComplete() {
-    if (!identity || busy) return;
+    if (busy) return;
+    if (!identity) {
+      toastError("Not ready", "Your session is still loading — try again in a moment.");
+      return;
+    }
     setBusy(true);
     try {
       const res = nextAction === "CHECK_IN" ? await checkIn(identity) : await checkOut(identity);

@@ -151,11 +151,11 @@ export default function OwnerDashboardPage() {
   const maxTypeCount = Math.max(1, ...typeBreakdown.map((item) => item.count));
 
   return (
-    <DashboardShell
-      title="Dashboard"
-      subtitle={`Welcome back — here's what's happening at ${hostelName}.`}
-    >
-      <Protected permission="VIEW_DASHBOARD">
+    <Protected roles={["HOSTEL_OWNER", "SUPER_ADMIN"]} permission="VIEW_DASHBOARD">
+      <DashboardShell
+        title="Dashboard"
+        subtitle={`Welcome back — here's what's happening at ${hostelName}.`}
+      >
         <div className="space-y-5">
           <SubscriptionBanner />
           {hostels.length > 1 && (
@@ -336,7 +336,7 @@ export default function OwnerDashboardPage() {
             </>
           )}
         </div>
-      </Protected>
-    </DashboardShell>
+      </DashboardShell>
+    </Protected>
   );
 }

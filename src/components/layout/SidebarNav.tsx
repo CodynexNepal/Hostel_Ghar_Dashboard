@@ -100,6 +100,7 @@ export function SidebarNavList({
                       <li key={child.label}>
                         <Link
                           href={child.href}
+                          prefetch={false}
                           onClick={onNavigate}
                           aria-current={cActive ? "page" : undefined}
                           className={cn(
@@ -146,6 +147,7 @@ export function SidebarNavList({
           <li key={item.label}>
             <Link
               href={item.href!}
+              prefetch={false}
               onClick={onNavigate}
               aria-current={pathname === item.href ? "page" : undefined}
               className={cn(

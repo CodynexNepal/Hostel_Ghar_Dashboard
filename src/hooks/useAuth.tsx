@@ -23,9 +23,11 @@ import {
 } from "@/lib/hostelGhar";
 import {
   clearHostelId,
+  clearRoleCookie,
   clearToken,
   getHostelId,
   getToken,
+  setRoleCookie,
   setToken,
   toApiError,
 } from "@/lib/axios";
@@ -316,6 +318,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const normalized = normalizeUser(rawUser, cached.role);
           setUser(normalized);
           writeCachedUser(normalized);
+          setRoleCookie(normalized.role);
         })
         .catch(() => {
           /* offline or session expired — keep cached user, 401 interceptor redirects */
@@ -330,6 +333,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const normalized = normalizeUser(rawUser, tokenRole ?? "HOSTEL_OWNER");
           setUser(normalized);
           writeCachedUser(normalized);
+          setRoleCookie(normalized.role);
         })
         .catch(() => {
           /* no session — user stays null and guards redirect to /login */
@@ -396,6 +400,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
         setUser(normalized);
         writeCachedUser(normalized);
+        setRoleCookie(normalized.role);
         redirectTo = routeForRole(normalized.role);
         setPlanOverride(null);
         // Fetch the REAL plan immediately so the landing page never gates on
@@ -437,6 +442,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const normalized = normalizeUser(rawUser, "HOSTEL_OWNER");
           setUser(normalized);
           writeCachedUser(normalized);
+          setRoleCookie(normalized.role);
           redirectTo = routeForRole(normalized.role);
         }
         router.push(redirectTo);
@@ -473,6 +479,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const wipeLocalSession = useCallback(() => {
     clearToken();
     clearHostelId();
+    clearRoleCookie();
     writeCachedUser(null);
     setUser(null);
     setPlanOverride(null);
@@ -556,6 +563,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           : { ...MOCK_OWNER_FREE, subscription: { ...MOCK_OWNER_FREE.subscription } };
     setUser(demo);
     writeCachedUser(demo);
+    setRoleCookie(demo.role);
     if (!getToken()) {
       try {
         setToken("demo-token");

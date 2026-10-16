@@ -24,3 +24,4 @@ export const env = {
 export const TOKEN_KEY = "hg_token";
 export const USER_KEY = "hg_user";
 export const HOSTEL_ID_KEY = "hg_hostel_id";
+export const ROLE_KEY = "hg_role";

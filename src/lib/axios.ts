@@ -1,5 +1,5 @@
 import axios, { AxiosError, type InternalAxiosRequestConfig } from "axios";
-import { env, HOSTEL_ID_KEY, TOKEN_KEY } from "./env";
+import { env, HOSTEL_ID_KEY, ROLE_KEY, TOKEN_KEY } from "./env";
 
 export const api = axios.create({
   baseURL: env.apiUrl,
@@ -30,12 +30,30 @@ export function getToken(): string | null {
 
 export function setToken(token: string): void {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(TOKEN_KEY, token);
+  try {
+    window.localStorage.setItem(TOKEN_KEY, token);
+  } catch {
+    /* noop */
+  }
+  try {
+    document.cookie = `${TOKEN_KEY}=${encodeURIComponent(token)}; Path=/; SameSite=Lax`;
+  } catch {
+    /* noop */
+  }
 }
 
 export function clearToken(): void {
   if (typeof window === "undefined") return;
-  window.localStorage.removeItem(TOKEN_KEY);
+  try {
+    window.localStorage.removeItem(TOKEN_KEY);
+  } catch {
+    /* noop */
+  }
+  try {
+    document.cookie = `${TOKEN_KEY}=; Path=/; Max-Age=0; SameSite=Lax`;
+  } catch {
+    /* noop */
+  }
 }
 
 // ------------------------------------------------------------------
@@ -83,6 +101,20 @@ export function setHostelId(hostelId: string): void {
 export function clearHostelId(): void {
   if (typeof document === "undefined") return;
   document.cookie = `${HOSTEL_ID_KEY}=; Path=/; Max-Age=0; SameSite=Lax`;
+}
+
+export function getRoleCookie(): string | null {
+  return getCookieValue(ROLE_KEY);
+}
+
+export function setRoleCookie(role: string): void {
+  if (typeof document === "undefined") return;
+  document.cookie = `${ROLE_KEY}=${encodeURIComponent(role)}; Path=/; SameSite=Lax`;
+}
+
+export function clearRoleCookie(): void {
+  if (typeof document === "undefined") return;
+  document.cookie = `${ROLE_KEY}=; Path=/; Max-Age=0; SameSite=Lax`;
 }
 
 export function getAccessTokenFromCookies(): string | null {

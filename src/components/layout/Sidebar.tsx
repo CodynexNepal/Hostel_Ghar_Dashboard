@@ -82,6 +82,7 @@ export function Sidebar() {
       >
         <Link
           href={home}
+          prefetch={false}
           className="flex h-16 shrink-0 items-center gap-2.5 overflow-hidden px-4"
           aria-label="Hostel Ghar home"
         >
@@ -112,6 +113,7 @@ export function Sidebar() {
     >
       <Link
         href={home}
+        prefetch={false}
         className="flex h-16 shrink-0 items-center gap-2.5 overflow-hidden px-4"
         aria-label="Hostel Ghar home"
       >

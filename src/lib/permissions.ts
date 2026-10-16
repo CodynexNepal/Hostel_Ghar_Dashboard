@@ -17,9 +17,7 @@ export function canRoleAccess(
   required?: Permission
 ): boolean {
   if (role === "SUPER_ADMIN") return true;
-  // Residents only see their own pages — never owner management screens
-  // like /subscription (MANAGE_SUBSCRIPTION). The hostel plan badge is
-  // the only subscription surface they get.
-  if (role === "RESIDENT") return required !== "MANAGE_SUBSCRIPTION";
+  // Residents only see resident pages — never owner management screens or owner permissions.
+  if (role === "RESIDENT") return false;
   return canAccess(plan, required);
 }

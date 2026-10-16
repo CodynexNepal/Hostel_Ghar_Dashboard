@@ -33,7 +33,11 @@ export function decodeTokenPayload(token: string | null | undefined): TokenPaylo
     const padded = base64 + "=".repeat((4 - (base64.length % 4)) % 4);
     // atob breaks on non-Latin1 chars; decode UTF-8 safely.
     const binary =
-      typeof atob !== "undefined" ? atob(padded) : Buffer.from(padded, "base64").toString("binary");
+      typeof atob === "function"
+        ? atob(padded)
+        : typeof Buffer !== "undefined"
+          ? Buffer.from(padded, "base64").toString("binary")
+          : "";
     const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0));
     const json = new TextDecoder().decode(bytes);
     const parsed: unknown = JSON.parse(json);
@@ -126,3 +130,5 @@ export function routeForRole(role: UserRole): string {
   if (role === "SUPER_ADMIN") return "/admin";
   return "/dashboard";
 }
+
+export const homeRouteForRole = routeForRole;

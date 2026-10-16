@@ -16,13 +16,13 @@ export function usePermissions() {
       isPlanLoading: role === "HOSTEL_OWNER" && subscriptionLoading,
       has: (permission: Permission) => {
         if (role === "SUPER_ADMIN") return true;
-        if (role === "RESIDENT") return permission !== "MANAGE_SUBSCRIPTION";
+        if (role === "RESIDENT") return false;
         return hasPermission(plan, permission);
       },
       canAccess: (permission?: Permission) => {
         if (!permission) return true;
         if (role === "SUPER_ADMIN") return true;
-        if (role === "RESIDENT") return permission !== "MANAGE_SUBSCRIPTION";
+        if (role === "RESIDENT") return false;
         return hasPermission(plan, permission);
       },
     }),

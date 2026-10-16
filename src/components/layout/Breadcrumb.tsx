@@ -28,6 +28,7 @@ export function Breadcrumb() {
         <li className="flex shrink-0 items-center">
           <Link
             href={home}
+            prefetch={false}
             aria-label="Hostel Ghar home"
             className="flex items-center gap-1.5 text-neutral-400 transition-colors hover:text-neutral-900"
           >
@@ -48,6 +49,7 @@ export function Breadcrumb() {
               ) : (
                 <Link
                   href={item.href}
+                  prefetch={false}
                   className="block max-w-[110px] truncate text-neutral-500 transition-colors hover:text-neutral-900 sm:max-w-[160px]"
                 >
                   {item.label}

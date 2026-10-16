@@ -28,38 +28,44 @@ export function useMyAttendance(identity: AttendanceIdentity | null): MyAttendan
   const [isLoading, setIsLoading] = useState(true);
   const key = identity ? residentKeyOf(identity) : "";
 
-  const load = useCallback(async () => {
-    if (!identity) {
-      setHistory([]);
-      setIsLoading(false);
-      return;
-    }
-    const backend = await fetchBackendMine();
-    let rows: AttendanceRecord[];
-    if (backend && backend.length > 0) {
-      const merged = new Map<string, AttendanceRecord>();
-      for (const r of readLocalAttendance()) merged.set(r.id, r);
-      for (const r of backend) {
-        const prev = merged.get(r.id);
-        if (prev?.checkOutAt && !r.checkOutAt) {
-          merged.set(r.id, { ...r, checkOutAt: prev.checkOutAt, status: "CHECKED_OUT" });
-        } else merged.set(r.id, r);
+  const load = useCallback(
+    async (opts?: { force?: boolean }) => {
+      if (!identity) {
+        setHistory([]);
+        setIsLoading(false);
+        return;
       }
-      rows = [...merged.values()];
-      writeLocalAttendance(rows);
-    } else {
-      rows = readLocalAttendance();
-    }
-    setHistory(rows.filter((r) => r.id.startsWith(`${key}::`)));
-    setIsLoading(false);
+      // Throttled by ATTENDANCE_FETCH_INTERVAL_MS in fetchBackendMine; only an
+      // explicit refresh (post check-in/out) forces a fresh backend hit.
+      const backend = await fetchBackendMine({ page: 1, limit: 30, force: opts?.force });
+      let rows: AttendanceRecord[];
+      if (backend && backend.length > 0) {
+        const merged = new Map<string, AttendanceRecord>();
+        for (const r of readLocalAttendance()) merged.set(r.id, r);
+        for (const r of backend) {
+          const prev = merged.get(r.id);
+          if (prev?.checkOutAt && !r.checkOutAt) {
+            merged.set(r.id, { ...r, checkOutAt: prev.checkOutAt, status: "CHECKED_OUT" });
+          } else merged.set(r.id, r);
+        }
+        rows = [...merged.values()];
+        writeLocalAttendance(rows);
+      } else {
+        rows = readLocalAttendance();
+      }
+      setHistory(rows.filter((r) => r.id.startsWith(`${key}::`)));
+      setIsLoading(false);
+    },
     // Identity object identity changes every render; key scopes to the same resident.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
+    [key]
+  );
 
   useEffect(() => {
     void load();
   }, [load]);
   useEffect(() => {
+    // Storage/event changes reload via the throttled fetch — not a backend poll.
     const onChange = () => void load();
     window.addEventListener(ATTENDANCE_EVENT, onChange);
     window.addEventListener("storage", onChange);
@@ -69,13 +75,15 @@ export function useMyAttendance(identity: AttendanceIdentity | null): MyAttendan
     };
   }, [load]);
 
+  const refresh = useCallback(() => load({ force: true }), [load]);
+
   const today = history.find((r) => r.date === dayKeyLocal()) ?? null;
   const nextAction: MyAttendanceState["nextAction"] = !today
     ? "CHECK_IN"
     : today.checkOutAt
       ? "DONE"
       : "CHECK_OUT";
-  return { today, history, isLoading, nextAction, refresh: load };
+  return { today, history, isLoading, nextAction, refresh };
 }
 
 export interface HostelAttendanceState {

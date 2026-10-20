@@ -1,5 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  output: "standalone",
   reactStrictMode: true,
   poweredByHeader: false,
   images: {
@@ -19,7 +20,7 @@ const nextConfig = {
     ],
   },
   async rewrites() {
-    const backendApiUrl = process.env.NEXT_BACKEND_API_URL ?? "http://localhost:8000/api";
+    const backendApiUrl = process.env.NEXT_BACKEND_API_URL ?? "https://api.hostelghar.com/api";
 
     return [
       {

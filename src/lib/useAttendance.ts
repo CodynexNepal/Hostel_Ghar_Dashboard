@@ -1,18 +1,12 @@
 "use client";
-/** React hooks for resident + owner attendance views. */
+/** React hooks for resident + owner attendance views — 100% backend-driven. */
 import { useCallback, useEffect, useState } from "react";
 import {
   dayKeyLocal,
-  residentKeyOf,
   type AttendanceIdentity,
   type AttendanceRecord,
 } from "./attendance-types";
-import {
-  ATTENDANCE_EVENT,
-  listLocalAttendance,
-  readLocalAttendance,
-  writeLocalAttendance,
-} from "./attendance-store";
+import { ATTENDANCE_EVENT } from "./attendance-store";
 import { fetchBackendHostel, fetchBackendMine } from "./attendance-actions";
 
 export interface MyAttendanceState {
@@ -26,7 +20,6 @@ export interface MyAttendanceState {
 export function useMyAttendance(identity: AttendanceIdentity | null): MyAttendanceState {
   const [history, setHistory] = useState<AttendanceRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const key = identity ? residentKeyOf(identity) : "";
 
   const load = useCallback(
     async (opts?: { force?: boolean }) => {
@@ -35,43 +28,29 @@ export function useMyAttendance(identity: AttendanceIdentity | null): MyAttendan
         setIsLoading(false);
         return;
       }
-      // Throttled by ATTENDANCE_FETCH_INTERVAL_MS in fetchBackendMine; only an
-      // explicit refresh (post check-in/out) forces a fresh backend hit.
+      setIsLoading(true);
       const backend = await fetchBackendMine({ page: 1, limit: 30, force: opts?.force });
-      let rows: AttendanceRecord[];
-      if (backend && backend.length > 0) {
-        const merged = new Map<string, AttendanceRecord>();
-        for (const r of readLocalAttendance()) merged.set(r.id, r);
-        for (const r of backend) {
-          const prev = merged.get(r.id);
-          if (prev?.checkOutAt && !r.checkOutAt) {
-            merged.set(r.id, { ...r, checkOutAt: prev.checkOutAt, status: "CHECKED_OUT" });
-          } else merged.set(r.id, r);
-        }
-        rows = [...merged.values()];
-        writeLocalAttendance(rows);
+      if (backend && Array.isArray(backend)) {
+        setHistory(backend);
       } else {
-        rows = readLocalAttendance();
+        setHistory([]);
       }
-      setHistory(rows.filter((r) => r.id.startsWith(`${key}::`)));
       setIsLoading(false);
     },
-    // Identity object identity changes every render; key scopes to the same resident.
+    // Scoped by identity existence
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [key]
+    [identity?.residentId]
   );
 
   useEffect(() => {
     void load();
   }, [load]);
+
   useEffect(() => {
-    // Storage/event changes reload via the throttled fetch — not a backend poll.
-    const onChange = () => void load();
+    const onChange = () => void load({ force: true });
     window.addEventListener(ATTENDANCE_EVENT, onChange);
-    window.addEventListener("storage", onChange);
     return () => {
       window.removeEventListener(ATTENDANCE_EVENT, onChange);
-      window.removeEventListener("storage", onChange);
     };
   }, [load]);
 
@@ -83,6 +62,7 @@ export function useMyAttendance(identity: AttendanceIdentity | null): MyAttendan
     : today.checkOutAt
       ? "DONE"
       : "CHECK_OUT";
+
   return { today, history, isLoading, nextAction, refresh };
 }
 
@@ -98,34 +78,25 @@ export function useHostelAttendance(hostelId?: string | null): HostelAttendanceS
 
   const load = useCallback(async () => {
     if (!hostelId) {
-      setRecords(readLocalAttendance());
+      setRecords([]);
       setIsLoading(false);
       return;
     }
+    setIsLoading(true);
     const backend = await fetchBackendHostel(hostelId);
-    let rows: AttendanceRecord[];
-    if (backend && backend.length > 0) {
-      const merged = new Map<string, AttendanceRecord>();
-      for (const r of readLocalAttendance()) merged.set(r.id, r);
-      for (const r of backend) if (!merged.has(r.id)) merged.set(r.id, r);
-      rows = [...merged.values()].filter((r) => !r.hostelId || r.hostelId === hostelId);
-    } else {
-      rows = listLocalAttendance({ hostelId });
-    }
-    setRecords(rows);
+    setRecords(backend ?? []);
     setIsLoading(false);
   }, [hostelId]);
 
   useEffect(() => {
     void load();
   }, [load]);
+
   useEffect(() => {
     const onChange = () => void load();
     window.addEventListener(ATTENDANCE_EVENT, onChange);
-    window.addEventListener("storage", onChange);
     return () => {
       window.removeEventListener(ATTENDANCE_EVENT, onChange);
-      window.removeEventListener("storage", onChange);
     };
   }, [load]);
 

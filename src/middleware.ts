@@ -51,7 +51,12 @@ function extractRole(request: NextRequest): UserRole | null {
 }
 
 function hasAnyAuthCookie(request: NextRequest): boolean {
-  if (request.cookies.get("hg_role")?.value) return true;
+  // Check for session cookie, role cookie, or any candidate JWT token cookie.
+  // When backend is on port 8000 and Next.js is on port 3001, HttpOnly cookies
+  // set on 8000 without host sharing rely on the frontend `hg_session`/`hg_role`
+  // cookie, which is wiped cleanly on 401 or logout.
+  if (Boolean(request.cookies.get("hg_session")?.value)) return true;
+  if (Boolean(request.cookies.get("hg_role")?.value)) return true;
   return CANDIDATE_TOKEN_COOKIES.some((name) => Boolean(request.cookies.get(name)?.value));
 }
 

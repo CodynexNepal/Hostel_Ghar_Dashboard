@@ -3,7 +3,9 @@ import type { Permission, SubscriptionPlan, UserRole } from "@/types/auth";
 
 /** Pure permission check — single source of truth for plan gating. */
 export function hasPermission(plan: SubscriptionPlan, permission: Permission): boolean {
-  return PLAN_PERMISSIONS[plan]?.includes(permission) ?? false;
+  const norm = (plan ? String(plan).trim().toUpperCase() : "FREE") as SubscriptionPlan;
+  const list = PLAN_PERMISSIONS[norm] ?? PLAN_PERMISSIONS.FREE;
+  return list.includes(permission);
 }
 
 export function canAccess(plan: SubscriptionPlan, required?: Permission): boolean {

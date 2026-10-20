@@ -1,5 +1,5 @@
 import axios, { AxiosError, type InternalAxiosRequestConfig } from "axios";
-import { env, HOSTEL_ID_KEY, ROLE_KEY, TOKEN_KEY } from "./env";
+import { env, HOSTEL_ID_KEY, ROLE_KEY, SESSION_KEY, TOKEN_KEY } from "./env";
 
 export const api = axios.create({
   baseURL: env.apiUrl,
@@ -12,7 +12,7 @@ export const api = axios.create({
 // (pending) in DevTools with no clue. Surface it in the console immediately.
 if (typeof window !== "undefined" && !env.apiUrl) {
   console.error(
-    "[api] NEXT_PUBLIC_API_URL is missing. Create D:\\Hostel_Ghar_Dashboard\\.env.local with NEXT_PUBLIC_API_URL=http://localhost:3000/api and restart `next dev`."
+    "[api] NEXT_PUBLIC_API_URL is missing. Create D:\\Hostel_Ghar_Dashboard\\.env.local with NEXT_PUBLIC_API_URL=https://api.hostelghar.com/api and restart `next dev`."
   );
 }
 
@@ -117,6 +117,20 @@ export function clearRoleCookie(): void {
   document.cookie = `${ROLE_KEY}=; Path=/; Max-Age=0; SameSite=Lax`;
 }
 
+export function setSessionCookie(): void {
+  if (typeof document === "undefined") return;
+  document.cookie = `${SESSION_KEY}=1; Path=/; SameSite=Lax`;
+}
+
+export function clearSessionCookie(): void {
+  if (typeof document === "undefined") return;
+  document.cookie = `${SESSION_KEY}=; Path=/; Max-Age=0; SameSite=Lax`;
+}
+
+export function getSessionCookie(): string | null {
+  return getCookieValue(SESSION_KEY);
+}
+
 export function getAccessTokenFromCookies(): string | null {
   // Backend sets `access_token` as HttpOnly on login (invisible to JS —
   // the browser still sends it via `withCredentials: true` on every
@@ -180,6 +194,9 @@ api.interceptors.response.use(
     const apiError = toApiError(error);
     if (apiError.status === 401 && typeof window !== "undefined") {
       clearToken();
+      clearSessionCookie();
+      clearRoleCookie();
+      clearHostelId();
       if (!window.location.pathname.startsWith("/login") && !redirecting) {
         redirecting = true;
         window.location.href = "/login?reason=session-expired";

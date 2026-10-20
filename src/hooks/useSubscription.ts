@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   hostelGhar,
   normalizeCheckLimit,
@@ -40,12 +40,22 @@ export function useSubscription() {
   const [isMutating, setIsMutating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  // Dedupe: StrictMode double-mounts + syncLiveSubscription churn used to
+  // fire this effect 4-6x per page view (plans/hostels/current/check-limit
+  // each re-fetched). Coalesce concurrent loads into one in-flight request
+  // and skip re-loads whose inputs haven't meaningfully changed.
+  const inFlightRef = useRef<Promise<void> | null>(null);
+  const lastKeyRef = useRef<string | null>(null);
 
   const load = useCallback(
-    async (preferred?: string | null) => {
-      setIsLoading(true);
-      setError(null);
-      try {
+    async (preferred?: string | null, opts?: { force?: boolean }) => {
+      // Coalesce concurrent callers (banner + sidebar + auth refresh fire at
+      // once right after login) into a single in-flight request.
+      if (inFlightRef.current && !opts?.force) return inFlightRef.current;
+      const run = (async () => {
+        setIsLoading(true);
+        setError(null);
+        try {
         let p: BackendPlan[] = [];
         try {
           p = normalizePlans((await hostelGhar.subscriptions.plans()).data);
@@ -137,10 +147,17 @@ export function useSubscription() {
 
         // Mirror the LIVE plan into global auth state so plan-gated UI matches backend everywhere
         syncLiveSubscription(derivedPlan, derivedUsed, derivedLimit);
-      } catch (e) {
-        setError(toApiError(e).message);
+        } catch (e) {
+          setError(toApiError(e).message);
+        } finally {
+          setIsLoading(false);
+        }
+      })();
+      inFlightRef.current = run;
+      try {
+        await run;
       } finally {
-        setIsLoading(false);
+        if (inFlightRef.current === run) inFlightRef.current = null;
       }
     },
     [
@@ -152,8 +169,14 @@ export function useSubscription() {
   );
 
   useEffect(() => {
+    // Fire once per user identity — NOT on plan/usage churn, otherwise
+    // syncLiveSubscription -> user change -> load -> syncLive… loops forever.
+    const key = `${user?.id ?? "anon"}:${user?.role ?? "none"}:${user?.hostelId ?? "none"}`;
+    if (lastKeyRef.current === key) return;
+    lastKeyRef.current = key;
     load().catch(() => undefined);
-  }, [load]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, user?.role, user?.hostelId]);
 
   const subscribe = useCallback(
     async (payload: SubscribePayload) => {
@@ -166,7 +189,7 @@ export function useSubscription() {
       setActionError(null);
       try {
         await hostelGhar.subscriptions.subscribe({ ...payload, hostelId: hid });
-        await load(hid);
+        await load(hid, { force: true });
         return true;
       } catch (e) {
         setActionError(toApiError(e).message);
@@ -188,7 +211,7 @@ export function useSubscription() {
     setActionError(null);
     try {
       await hostelGhar.subscriptions.cancel(hid);
-      await load(hid);
+      await load(hid, { force: true });
       return true;
     } catch (e) {
       setActionError(toApiError(e).message);

@@ -24,10 +24,12 @@ import {
 import {
   clearHostelId,
   clearRoleCookie,
+  clearSessionCookie,
   clearToken,
   getHostelId,
   getToken,
   setRoleCookie,
+  setSessionCookie,
   setToken,
   toApiError,
 } from "@/lib/axios";
@@ -75,18 +77,31 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 function readCachedUser(): AuthUser | null {
-  // Production-grade: Live backend profile is always the authority; do not rely on stale localStorage cache.
-  return null;
+  // Fast-path so a logged-in user sees the dashboard instantly after login
+  // navigation, while the background /auth/me revalidation confirms it.
+  // Without this, every full page load starts as logged-out, Protected
+  // redirects to /login, and the middleware bounces back — the "dashboard
+  // not opening after successful login" loop.
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(USER_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as AuthUser;
+    if (parsed && typeof parsed === "object" && parsed.role && parsed.email) return parsed;
+    return null;
+  } catch {
+    return null;
+  }
 }
 
-function writeCachedUser(_user: AuthUser | null) {
-  // Wipe any stale localStorage user entry so browser state is strictly backend-driven
-  if (typeof window !== "undefined") {
-    try {
-      window.localStorage.removeItem(USER_KEY);
-    } catch {
-      /* noop */
-    }
+function writeCachedUser(user: AuthUser | null) {
+  // Keep the cached user in sync so reloads restore the session instantly.
+  if (typeof window === "undefined") return;
+  try {
+    if (user) window.localStorage.setItem(USER_KEY, JSON.stringify(user));
+    else window.localStorage.removeItem(USER_KEY);
+  } catch {
+    /* storage blocked — backend stays source of truth */
   }
 }
 
@@ -148,14 +163,15 @@ function normalizeUser(raw: unknown, fallback: UserRole): AuthUser {
     hostel?.id ??
     hostel?._id ??
     hostel?.hostelId ??
-    (typeof u.hostel === "string" ? u.hostel : undefined);
-  const hostelName = u.hostelName ?? hostel?.name;
+    (typeof u.hostel === "string" ? u.hostel : undefined) ??
+    str(nested?.hostelId ?? nested?.hostel_id);
+  const hostelName = u.hostelName ?? hostel?.name ?? str(nested?.hostelName);
   // Backend roles come in many shapes ("owner", "ROLE_OWNER", ["ADMIN"], …).
   // normalizeRole maps them onto our union; fall back only when unknown.
-  const role = normalizeRole(u.role) ?? fallback;
+  const role = normalizeRole(u.role ?? nested?.role) ?? fallback;
   // Normalize the embedded subscription too — backend may send
   // `{ plan: "PRO", residentsLimit: null }` for unlimited.
-  const rawSub = u.subscription as Partial<AuthUser["subscription"]> | undefined;
+  const rawSub = (u.subscription ?? nested?.subscription) as Partial<AuthUser["subscription"]> | undefined;
   const subPlan = (typeof rawSub?.plan === "string" ? rawSub.plan.toUpperCase() : undefined) as
     AuthUser["subscription"]["plan"] | undefined;
   const normLimit = (v: unknown): number | null | undefined => {
@@ -319,6 +335,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUser(normalized);
           writeCachedUser(normalized);
           setRoleCookie(normalized.role);
+          setSessionCookie();
         })
         .catch(() => {
           /* offline or session expired — keep cached user, 401 interceptor redirects */
@@ -334,6 +351,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUser(normalized);
           writeCachedUser(normalized);
           setRoleCookie(normalized.role);
+          setSessionCookie();
         })
         .catch(() => {
           /* no session — user stays null and guards redirect to /login */
@@ -401,6 +419,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(normalized);
         writeCachedUser(normalized);
         setRoleCookie(normalized.role);
+        setSessionCookie();
         redirectTo = routeForRole(normalized.role);
         setPlanOverride(null);
         // Fetch the REAL plan immediately so the landing page never gates on
@@ -443,6 +462,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUser(normalized);
           writeCachedUser(normalized);
           setRoleCookie(normalized.role);
+          setSessionCookie();
           redirectTo = routeForRole(normalized.role);
         }
         router.push(redirectTo);
@@ -480,6 +500,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     clearToken();
     clearHostelId();
     clearRoleCookie();
+    clearSessionCookie();
     writeCachedUser(null);
     setUser(null);
     setPlanOverride(null);
@@ -564,6 +585,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(demo);
     writeCachedUser(demo);
     setRoleCookie(demo.role);
+    setSessionCookie();
     if (!getToken()) {
       try {
         setToken("demo-token");

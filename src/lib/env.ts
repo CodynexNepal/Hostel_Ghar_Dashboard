@@ -15,7 +15,7 @@ function required(name: string, fallback?: string): string {
 }
 
 export const env = {
-  apiUrl: required("NEXT_PUBLIC_API_URL", "http://localhost:8000/api"),
+  apiUrl: required("NEXT_PUBLIC_API_URL", "https://api.hostelghar.com/api"),
   appName: process.env.NEXT_PUBLIC_APP_NAME ?? "Hostel Ghar",
   isProd: process.env.NODE_ENV === "production",
   isDev: process.env.NODE_ENV !== "production",
@@ -25,3 +25,5 @@ export const TOKEN_KEY = "hg_token";
 export const USER_KEY = "hg_user";
 export const HOSTEL_ID_KEY = "hg_hostel_id";
 export const ROLE_KEY = "hg_role";
+export const SESSION_KEY = "hg_session";
+

@@ -40,6 +40,14 @@ CPANEL_USER="${CPANEL_USER:-hostelgh}"
 CPANEL_PORT="${CPANEL_PORT:-22}"
 SSH_KEY_PATH="${SSH_KEY_PATH:-}"
 
+# Expand literal leading '~' if provided by CI env without shell expansion
+if [[ "$SSH_KEY_PATH" == \~* ]]; then
+  SSH_KEY_PATH="${SSH_KEY_PATH/#\~/$HOME}"
+fi
+if [ -z "$SSH_KEY_PATH" ] && [ -f "$HOME/.ssh/cpanel_key" ]; then
+  SSH_KEY_PATH="$HOME/.ssh/cpanel_key"
+fi
+
 MAX_HEALTH_ATTEMPTS="${MAX_HEALTH_ATTEMPTS:-12}"
 HEALTH_SLEEP_SECONDS="${HEALTH_SLEEP_SECONDS:-5}"
 

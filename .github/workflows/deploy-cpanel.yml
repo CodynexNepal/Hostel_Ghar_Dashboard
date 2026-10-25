@@ -47,17 +47,27 @@ jobs:
           tar -czf deploy-bundle.tar.gz -C deploy-bundle .
 
       - name: Setup SSH Key
+        env:
+          CPANEL_SSH_KEY: ${{ secrets.CPANEL_SSH_KEY }}
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.CPANEL_SSH_KEY }}" > ~/.ssh/cpanel_key
+          printf '%s\n' "$CPANEL_SSH_KEY" > "${{ runner.temp }}/cpanel_key"
+          chmod 600 "${{ runner.temp }}/cpanel_key"
+          cp "${{ runner.temp }}/cpanel_key" ~/.ssh/cpanel_key
           chmod 600 ~/.ssh/cpanel_key
+
+          # Validate key syntax
+          ssh-keygen -y -f "${{ runner.temp }}/cpanel_key" > /dev/null || {
+            echo "::error::CPANEL_SSH_KEY secret is invalid or not in PEM/OpenSSH format."
+            exit 1
+          }
 
       - name: Execute Deployment Script
         env:
           CPANEL_HOST: ${{ secrets.CPANEL_HOST }}
           CPANEL_USER: ${{ secrets.CPANEL_USER }}
           CPANEL_PORT: ${{ secrets.CPANEL_PORT || '22' }}
-          SSH_KEY_PATH: ~/.ssh/cpanel_key
+          SSH_KEY_PATH: ${{ runner.temp }}/cpanel_key
           BUNDLE_FILE: deploy-bundle.tar.gz
           APP_DIR: /home/hostelgh/dashboard.hostelghar.com/Hostel_Ghar_Dashboard
           HEALTH_URL: https://dashboard.hostelghar.com

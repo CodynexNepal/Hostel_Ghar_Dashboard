@@ -6,10 +6,18 @@ on:
       - main
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: hostel-ghar-dashboard-production
+  cancel-in-progress: false
+
 jobs:
   deploy:
     name: Build & Deploy to cPanel
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
       - name: Checkout Repository
@@ -19,7 +27,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: "npm"
+          cache: npm
 
       - name: Install Dependencies
         run: npm ci
@@ -30,39 +38,134 @@ jobs:
           NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
           NEXT_BACKEND_API_URL: ${{ secrets.NEXT_BACKEND_API_URL }}
 
-      - name: Prepare Standalone Bundle
+      - name: Validate Next.js Build
+        shell: bash
         run: |
-          mkdir -p deploy-bundle
-          # Copy Next.js standalone server and dependencies
-          cp -r .next/standalone/* deploy-bundle/
-          # Copy static assets required by Next.js standalone runtime
-          mkdir -p deploy-bundle/.next
-          cp -r .next/static deploy-bundle/.next/
-          # Copy public static files
-          cp -r public deploy-bundle/
-          # Include cPanel Passenger startup wrapper if present
-          cp app.js deploy-bundle/ 2>/dev/null || true
+          set -Eeuo pipefail
 
-          # Compress into the bundle tarball expected by scripts/deploy.sh
+          for file in \
+            ".next/BUILD_ID" \
+            ".next/standalone/server.js" \
+            ".next/required-server-files.json"
+          do
+            if [ ! -f "$file" ]; then
+              echo "::error::Required build file is missing: $file"
+              exit 1
+            fi
+          done
+
+          echo "Next.js build ID:"
+          cat .next/BUILD_ID
+
+      - name: Prepare Standalone Bundle
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          echo "Preparing clean standalone deployment bundle..."
+
+          rm -rf deploy-bundle deploy-bundle.tar.gz
+          mkdir -p deploy-bundle
+
+          # IMPORTANT: Copy hidden files and directories too.
+          # Using .next/standalone/* would skip hidden .next directories.
+          cp -a .next/standalone/. deploy-bundle/
+
+          # Ensure the complete Next.js build metadata is present.
+          mkdir -p deploy-bundle/.next
+
+          if [ -d .next/static ]; then
+            cp -a .next/static deploy-bundle/.next/
+          else
+            echo "::error::.next/static directory is missing"
+            exit 1
+          fi
+
+          # Include public assets when the project has a public directory.
+          if [ -d public ]; then
+            cp -a public deploy-bundle/public
+          fi
+
+          # Include the cPanel Passenger startup wrapper.
+          if [ -f app.js ]; then
+            cp app.js deploy-bundle/app.js
+          else
+            echo "::error::app.js is missing from the repository"
+            exit 1
+          fi
+
+          # Validate the actual bundle root.
+          for file in \
+            "deploy-bundle/server.js" \
+            "deploy-bundle/app.js" \
+            "deploy-bundle/package.json" \
+            "deploy-bundle/.next/BUILD_ID" \
+            "deploy-bundle/.next/required-server-files.json"
+          do
+            if [ ! -f "$file" ]; then
+              echo "::error::Deployment bundle is missing: $file"
+              exit 1
+            fi
+          done
+
+          SOURCE_BUILD_ID="$(cat .next/BUILD_ID)"
+          BUNDLE_BUILD_ID="$(cat deploy-bundle/.next/BUILD_ID)"
+
+          if [ "$SOURCE_BUILD_ID" != "$BUNDLE_BUILD_ID" ]; then
+            echo "::error::Source and bundle BUILD_ID values do not match"
+            exit 1
+          fi
+
+          echo "Verified build ID: $BUNDLE_BUILD_ID"
+
+          # Create the archive with files at the expected bundle root.
           tar -czf deploy-bundle.tar.gz -C deploy-bundle .
 
+          # Verify the archive itself before uploading.
+          tar -tzf deploy-bundle.tar.gz > bundle-contents.txt
+
+          if ! grep -Eq '^\./?\.next/BUILD_ID$' bundle-contents.txt; then
+            echo "::error::BUILD_ID is missing from the final archive"
+            exit 1
+          fi
+
+          if ! grep -Eq '^\./?server\.js$' bundle-contents.txt; then
+            echo "::error::server.js is missing from the final archive"
+            exit 1
+          fi
+
+          echo "Bundle validation successful."
+          echo "Bundle size:"
+          du -h deploy-bundle.tar.gz
+
       - name: Setup SSH Key
+        shell: bash
         env:
           CPANEL_SSH_KEY: ${{ secrets.CPANEL_SSH_KEY }}
         run: |
-          mkdir -p ~/.ssh
-          printf '%s\n' "$CPANEL_SSH_KEY" > "${{ runner.temp }}/cpanel_key"
-          chmod 600 "${{ runner.temp }}/cpanel_key"
-          cp "${{ runner.temp }}/cpanel_key" ~/.ssh/cpanel_key
-          chmod 600 ~/.ssh/cpanel_key
+          set -Eeuo pipefail
 
-          # Validate key syntax
-          ssh-keygen -y -f "${{ runner.temp }}/cpanel_key" > /dev/null || {
-            echo "::error::CPANEL_SSH_KEY secret is invalid or not in PEM/OpenSSH format."
+          if [ -z "${CPANEL_SSH_KEY:-}" ]; then
+            echo "::error::GitHub secret CPANEL_SSH_KEY is empty or missing"
             exit 1
-          }
+          fi
+
+          mkdir -p "$HOME/.ssh"
+          chmod 700 "$HOME/.ssh"
+
+          printf '%s\n' "$CPANEL_SSH_KEY" > "$RUNNER_TEMP/cpanel_key"
+          chmod 600 "$RUNNER_TEMP/cpanel_key"
+
+          if ! ssh-keygen -y -f "$RUNNER_TEMP/cpanel_key" > /dev/null; then
+            echo "::error::CPANEL_SSH_KEY is not a valid private SSH key"
+            exit 1
+          fi
+
+          cp "$RUNNER_TEMP/cpanel_key" "$HOME/.ssh/cpanel_key"
+          chmod 600 "$HOME/.ssh/cpanel_key"
 
       - name: Execute Deployment Script
+        shell: bash
         env:
           CPANEL_HOST: ${{ secrets.CPANEL_HOST }}
           CPANEL_USER: ${{ secrets.CPANEL_USER }}
@@ -70,6 +173,12 @@ jobs:
           SSH_KEY_PATH: ${{ runner.temp }}/cpanel_key
           BUNDLE_FILE: deploy-bundle.tar.gz
           APP_DIR: /home/hostelgh/hostelghar_dashboard
+          BACKUP_DIR: /home/hostelgh/dashboard_backups
+          REMOTE_TMP_DIR: /home/hostelgh/tmp_dashboard_deploy
+          NODE_VENV_PATH: /home/hostelgh/nodevenv/hostelghar_dashboard/20
           HEALTH_URL: https://dashboard.hostelghar.com
+          MAX_HEALTH_ATTEMPTS: 12
+          HEALTH_SLEEP_SECONDS: 5
         run: |
+          set -Eeuo pipefail
           bash scripts/deploy.sh --runner

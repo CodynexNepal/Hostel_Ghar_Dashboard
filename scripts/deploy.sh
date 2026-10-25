@@ -7,7 +7,7 @@
 #   Repository  : CodynexNepal/Hostel_Ghar_Dashboard
 #   Domain      : https://dashboard.hostelghar.com
 #   cPanel User : hostelgh
-#   App Dir     : /home/hostelgh/dashboard.hostelghar.com/Hostel_Ghar_Dashboard
+#   App Dir     : /home/hostelgh/hostelghar_dashboard
 #   Node.js Venv: /home/hostelgh/nodevenv/hostelghar_dashboard/20
 #
 # Usage:
@@ -28,7 +28,7 @@ set -Eeuo pipefail
 # ------------------------------------------------------------------------------
 # Configuration & Defaults
 # ------------------------------------------------------------------------------
-APP_DIR="${APP_DIR:-/home/hostelgh/dashboard.hostelghar.com/Hostel_Ghar_Dashboard}"
+APP_DIR="${APP_DIR:-/home/hostelgh/hostelghar_dashboard}"
 BACKUP_DIR="${BACKUP_DIR:-/home/hostelgh/dashboard_backups}"
 REMOTE_TMP_DIR="${REMOTE_TMP_DIR:-/home/hostelgh/tmp_dashboard_deploy}"
 BUNDLE_FILE="${BUNDLE_FILE:-deploy-bundle.tar.gz}"

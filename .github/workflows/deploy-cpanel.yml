@@ -69,7 +69,7 @@ jobs:
           CPANEL_PORT: ${{ secrets.CPANEL_PORT || '22' }}
           SSH_KEY_PATH: ${{ runner.temp }}/cpanel_key
           BUNDLE_FILE: deploy-bundle.tar.gz
-          APP_DIR: /home/hostelgh/dashboard.hostelghar.com/Hostel_Ghar_Dashboard
+          APP_DIR: /home/hostelgh/hostelghar_dashboard
           HEALTH_URL: https://dashboard.hostelghar.com
         run: |
           bash scripts/deploy.sh --runner

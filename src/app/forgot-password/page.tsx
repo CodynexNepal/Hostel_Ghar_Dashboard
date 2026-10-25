@@ -1,4 +1,5 @@
 "use client";
+
 import { useState } from "react";
 import Link from "next/link";
 import { useForm } from "react-hook-form";
@@ -37,46 +38,44 @@ export default function ForgotPasswordPage() {
 
   return (
     <AuthShell
-      eyebrow="Account recovery"
-      title="Forgot your password?"
-      subtitle="Enter your registered email and we'll send you a secure reset link."
+      title="Reset your password"
+      subtitle="Enter your email address and we'll send you a recovery link"
     >
-      <div className="rounded-2xl border border-surface-border bg-white p-5 shadow-card sm:p-6">
-        {sentTo ? (
-          <div className="py-2 text-center">
-            <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-brand-muted">
-              <CheckCircle2 className="h-6 w-6 text-lime-700" aria-hidden />
-            </span>
-            <p className="mt-4 text-base font-bold text-neutral-950">Check your inbox</p>
-            <p className="mx-auto mt-2 max-w-[300px] text-sm leading-6 text-neutral-600">
-              We sent a reset link to{" "}
-              <span className="font-semibold text-neutral-900">{sentTo}</span>. It expires soon —
-              check spam too.
-            </p>
-            <Button variant="outline" className="mt-5 w-full" onClick={() => setSentTo(null)}>
-              Try a different email
-            </Button>
-          </div>
-        ) : (
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
-            <Input
-              label="Email address"
-              type="email"
-              autoComplete="email"
-              placeholder="you@hostel.com"
-              error={errors.email?.message}
-              className="h-11"
-              {...register("email")}
-              required
-            />
-            <Button type="submit" size="lg" className="w-full" loading={sending}>
-              Send reset link <ArrowRight className="h-4 w-4" aria-hidden />
-            </Button>
-          </form>
-        )}
+      {sentTo ? (
+        <div className="py-2 text-center">
+          <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-brand-muted">
+            <CheckCircle2 className="h-6 w-6 text-lime-700" aria-hidden />
+          </span>
+          <p className="mt-4 text-base font-bold text-neutral-950">Check your inbox</p>
+          <p className="mx-auto mt-2 max-w-[300px] text-sm leading-6 text-neutral-600">
+            We sent a reset link to{" "}
+            <span className="font-semibold text-neutral-900">{sentTo}</span>.
+          </p>
+          <Button variant="outline" className="mt-5 w-full" onClick={() => setSentTo(null)}>
+            Try a different email
+          </Button>
+        </div>
+      ) : (
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
+          <Input
+            label="Email address"
+            type="email"
+            autoComplete="email"
+            placeholder="you@hostel.com"
+            error={errors.email?.message}
+            className="h-11"
+            {...register("email")}
+          />
+          <Button type="submit" size="lg" className="w-full font-semibold" loading={sending}>
+            Send reset link <ArrowRight className="h-4 w-4" aria-hidden />
+          </Button>
+        </form>
+      )}
+
+      <div className="mt-6 text-center">
         <Link
           href="/login"
-          className="mt-5 inline-flex items-center gap-1.5 text-sm font-medium text-neutral-600 hover:text-neutral-950"
+          className="inline-flex items-center gap-1.5 text-sm font-medium text-neutral-600 hover:text-neutral-950 hover:underline"
         >
           <ArrowLeft className="h-4 w-4" aria-hidden /> Back to sign in
         </Link>

@@ -25,7 +25,12 @@ const spaceGrotesk = localFont({
 
 export const metadata: Metadata = {
   title: "Hostel Ghar — Hostel Management Dashboard",
-  description: "Premium SaaS dashboard for hostel owners, residents and platform admins.",
+  description: "Hostel management dashboard for owners, residents and platform admins.",
+  icons: {
+    icon: "/images/logo/hostel_ghar_logo.jpg",
+    shortcut: "/images/logo/hostel_ghar_logo.jpg",
+    apple: "/images/logo/hostel_ghar_logo.jpg",
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

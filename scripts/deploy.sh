@@ -126,20 +126,30 @@ get_ssh_opts() {
 
 test_ssh_connection() {
   log_info "Testing SSH connectivity to $CPANEL_USER@$CPANEL_HOST:$CPANEL_PORT..."
+  local ssh_output
+  local ssh_code=0
   # shellcheck disable=SC2046
-  if ssh $(get_ssh_opts) -o ConnectTimeout=15 "$CPANEL_USER@$CPANEL_HOST" "echo SSH_CONNECTION_OK" >/dev/null 2>&1; then
+  ssh_output=$(ssh $(get_ssh_opts) -o ConnectTimeout=15 "$CPANEL_USER@$CPANEL_HOST" "echo SSH_CONNECTION_OK" 2>&1) || ssh_code=$?
+
+  if [ $ssh_code -eq 0 ] && [[ "$ssh_output" == *"SSH_CONNECTION_OK"* ]]; then
     log_success "SSH connection established successfully."
   else
-    log_warn "Direct command execution test failed or restricted shell in effect. Attempting SFTP probe..."
+    log_warn "Direct command execution test failed or restricted shell in effect. (SSH output: $ssh_output)"
+    log_info "Attempting SFTP probe..."
     local sftp_probe="/tmp/sftp_probe_$$"
     echo "pwd" > "$sftp_probe"
+    local sftp_output
+    local sftp_code=0
     # shellcheck disable=SC2046
-    if sftp -P "$CPANEL_PORT" -i "$SSH_KEY_PATH" -o BatchMode=yes -o StrictHostKeyChecking=accept-new -b "$sftp_probe" "$CPANEL_USER@$CPANEL_HOST" >/dev/null 2>&1; then
-      rm -f "$sftp_probe"
+    sftp_output=$(sftp -P "$CPANEL_PORT" -i "$SSH_KEY_PATH" -o BatchMode=yes -o StrictHostKeyChecking=accept-new -b "$sftp_probe" "$CPANEL_USER@$CPANEL_HOST" 2>&1) || sftp_code=$?
+    rm -f "$sftp_probe"
+
+    if [ $sftp_code -eq 0 ]; then
       log_success "SFTP subsystem is accessible."
     else
-      rm -f "$sftp_probe"
       log_error "Could not establish SSH or SFTP connection to $CPANEL_USER@$CPANEL_HOST:$CPANEL_PORT."
+      log_error "  SSH details : $ssh_output"
+      log_error "  SFTP details: $sftp_output"
       log_error "Verify server hostname, port, firewall/IP whitelisting, and that the SSH public key is authorized on cPanel."
       exit 1
     fi

@@ -36,7 +36,6 @@ import {
 import type { ApiErrorShape } from "@/lib/axios";
 import { USER_KEY } from "@/lib/env";
 import { normalizeRole, roleFromToken, routeForRole } from "@/lib/jwt";
-import { MOCK_OWNER_FREE } from "@/lib/mock-data";
 
 export interface LoginResult {
   ok: boolean;
@@ -553,17 +552,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const switchRole = useCallback((r: UserRole) => {
     if (process.env.NODE_ENV === "production") return;
+    const defaultOwnerSubscription = {
+      plan: "FREE" as const,
+      status: "ACTIVE" as const,
+      residentsUsed: 0,
+      residentsLimit: 10,
+      renewsAt: "2026-10-01",
+      startedAt: "2026-06-01",
+    };
     const demo: AuthUser =
       r === "RESIDENT"
         ? {
             id: "u-res-1",
-            name: "Ramesh Adhikari",
-            email: "ramesh@mail.com",
-            phone: "9841111111",
+            name: "Resident User",
+            email: "resident@hostelghar.com",
+            phone: "9800000000",
             role: "RESIDENT",
             hostelId: "h-1",
-            hostelName: "Sunrise Boys Hostel",
-            subscription: { ...MOCK_OWNER_FREE.subscription, plan: "FREE" },
+            hostelName: "Hostel Ghar",
+            subscription: defaultOwnerSubscription,
           }
         : r === "SUPER_ADMIN"
           ? {
@@ -575,13 +582,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               subscription: {
                 plan: "ENTERPRISE",
                 status: "ACTIVE",
-                residentsUsed: 1240,
+                residentsUsed: 0,
                 residentsLimit: 100000,
                 renewsAt: "2027-01-01",
                 startedAt: "2025-01-01",
               },
             }
-          : { ...MOCK_OWNER_FREE, subscription: { ...MOCK_OWNER_FREE.subscription } };
+          : {
+              id: "u-owner-1",
+              name: "Hostel Owner",
+              email: "owner@hostelghar.com",
+              phone: "9800000000",
+              role: "HOSTEL_OWNER",
+              hostelId: "h-1",
+              hostelName: "Hostel Ghar",
+              subscription: defaultOwnerSubscription,
+            };
     setUser(demo);
     writeCachedUser(demo);
     setRoleCookie(demo.role);

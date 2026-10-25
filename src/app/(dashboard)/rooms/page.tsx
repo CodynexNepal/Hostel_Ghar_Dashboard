@@ -6,7 +6,6 @@ import { DataTable, type Column } from "@/components/ui/DataTable";
 import { Badge, statusTone } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { AddRoomModal, type NewRoomPayload } from "@/components/rooms/AddRoomModal";
-import { MOCK_ROOMS } from "@/lib/mock-data";
 import type { Room } from "@/types/hostel";
 import type { CreateRoomPayload } from "@/lib/api-types";
 import { formatCurrency } from "@/lib/utils";
@@ -56,13 +55,10 @@ export default function RoomsPage() {
   );
 
   const apiRooms = useMemo(() => data ?? [], [data]);
-  const rooms = useMemo(() => {
-    if (apiRooms.length === 0 && localRooms.length === 0) return error ? MOCK_ROOMS : apiRooms;
-    const merged = [...localRooms, ...apiRooms];
-    if (merged.length === 0) return MOCK_ROOMS;
-    return merged;
-  }, [apiRooms, localRooms, error]);
-  const usingFallback = Boolean(error);
+  const rooms: Room[] = useMemo(() => {
+    return [...localRooms, ...apiRooms];
+  }, [apiRooms, localRooms]);
+  const usingFallback = false;
   const availableCount = rooms.filter((r) => r.status === "AVAILABLE").length;
   const busy = createMutation.isPending || updateMutation.isPending;
 

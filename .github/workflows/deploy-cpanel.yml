@@ -1,0 +1,66 @@
+name: Deploy to cPanel
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Build & Deploy to cPanel
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Build Next.js Application
+        run: npm run build
+        env:
+          NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
+          NEXT_BACKEND_API_URL: ${{ secrets.NEXT_BACKEND_API_URL }}
+
+      - name: Prepare Standalone Bundle
+        run: |
+          mkdir -p deploy-bundle
+          # Copy Next.js standalone server and dependencies
+          cp -r .next/standalone/* deploy-bundle/
+          # Copy static assets required by Next.js standalone runtime
+          mkdir -p deploy-bundle/.next
+          cp -r .next/static deploy-bundle/.next/
+          # Copy public static files
+          cp -r public deploy-bundle/
+          # Include cPanel Passenger startup wrapper if present
+          cp app.js deploy-bundle/ 2>/dev/null || true
+          
+          # Compress into the bundle tarball expected by scripts/deploy.sh
+          tar -czf deploy-bundle.tar.gz -C deploy-bundle .
+
+      - name: Setup SSH Key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.CPANEL_SSH_KEY }}" > ~/.ssh/cpanel_key
+          chmod 600 ~/.ssh/cpanel_key
+
+      - name: Execute Deployment Script
+        env:
+          CPANEL_HOST: ${{ secrets.CPANEL_HOST }}
+          CPANEL_USER: ${{ secrets.CPANEL_USER }}
+          CPANEL_PORT: ${{ secrets.CPANEL_PORT || '22' }}
+          SSH_KEY_PATH: ~/.ssh/cpanel_key
+          BUNDLE_FILE: deploy-bundle.tar.gz
+          APP_DIR: /home/hostelgh/dashboard.hostelghar.com/Hostel_Ghar_Dashboard
+          HEALTH_URL: https://dashboard.hostelghar.com
+        run: |
+          bash scripts/deploy.sh --runner
+

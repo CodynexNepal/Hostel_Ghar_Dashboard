@@ -33,7 +33,6 @@ import type {
 } from "@/lib/api-types";
 import type { Room } from "@/types/hostel";
 import type { Resident } from "@/types/resident";
-import { MOCK_RESIDENTS, MOCK_ROOMS } from "@/lib/mock-data";
 
 const selectClass =
   "h-10 w-full rounded-md border border-surface-border bg-white px-3 text-sm text-neutral-900 outline-none focus:border-brand-ink focus:ring-2 focus:ring-brand disabled:cursor-not-allowed disabled:bg-neutral-50 disabled:text-neutral-400";
@@ -192,13 +191,13 @@ export default function AddResidentPage() {
           }
         }
         if (cancelled) return;
-        setRooms(apiRooms.length > 0 ? apiRooms : MOCK_ROOMS);
-        setResidents(apiResidents.length > 0 ? apiResidents : MOCK_RESIDENTS);
+        setRooms(apiRooms);
+        setResidents(apiResidents);
       } catch {
         if (cancelled) return;
-        setRooms(MOCK_ROOMS);
-        setResidents(MOCK_RESIDENTS);
-        setRoomsError("Couldn't load rooms — showing preview data.");
+        setRooms([]);
+        setResidents([]);
+        setRoomsError("Couldn't load rooms from server.");
       } finally {
         if (!cancelled) setRoomsLoading(false);
       }

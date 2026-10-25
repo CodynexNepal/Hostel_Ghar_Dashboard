@@ -56,97 +56,102 @@ export function useSubscription() {
         setIsLoading(true);
         setError(null);
         try {
-        let p: BackendPlan[] = [];
-        try {
-          p = normalizePlans((await hostelGhar.subscriptions.plans()).data);
-        } catch {
-          p = [];
-        }
-        setPlans(p);
-
-        const candidateHostel = preferred ?? user?.hostelId ?? getHostelId();
-        const hid = await resolveOwnerHostelId(candidateHostel);
-        setHostelId(hid);
-        const uuid = validHostelId(hid);
-
-        let cur: SubscriptionCurrent | null = null;
-        let chk: SubscriptionCheckLimit | null = null;
-        if (uuid) {
+          let p: BackendPlan[] = [];
           try {
-            cur = normalizeSubscriptionCurrent((await hostelGhar.subscriptions.current(uuid)).data);
+            p = normalizePlans((await hostelGhar.subscriptions.plans()).data);
           } catch {
-            cur = null;
+            p = [];
           }
-          try {
-            chk = normalizeCheckLimit((await hostelGhar.subscriptions.checkLimit(uuid, 1)).data);
-          } catch {
-            chk = null;
-          }
-        }
+          setPlans(p);
 
-        // Direct query fallback: hit GET /subscriptions/current without hostelId
-        if (!cur?.subscription || cur.subscription.plan === "FREE") {
-          try {
-            const direct = normalizeSubscriptionCurrent(
-              (await hostelGhar.subscriptions.current()).data
-            );
-            if (direct?.subscription && direct.subscription.plan !== "FREE") {
-              cur = direct;
-            } else if (!cur) {
-              cur = direct;
+          const candidateHostel = preferred ?? user?.hostelId ?? getHostelId();
+          const hid = await resolveOwnerHostelId(candidateHostel);
+          setHostelId(hid);
+          const uuid = validHostelId(hid);
+
+          let cur: SubscriptionCurrent | null = null;
+          let chk: SubscriptionCheckLimit | null = null;
+          if (uuid) {
+            try {
+              cur = normalizeSubscriptionCurrent(
+                (await hostelGhar.subscriptions.current(uuid)).data
+              );
+            } catch {
+              cur = null;
             }
-          } catch {
-            /* ignore direct query error */
+            try {
+              chk = normalizeCheckLimit((await hostelGhar.subscriptions.checkLimit(uuid, 1)).data);
+            } catch {
+              chk = null;
+            }
           }
-        }
 
-        let hist: SubscriptionHistoryItem[] = [];
-        try {
-          hist = normalizeSubscriptionHistory((await hostelGhar.subscriptions.history()).data);
-          setHistory(hist);
-        } catch {
-          hist = [];
-          setHistory([]);
-        }
+          // Direct query fallback: hit GET /subscriptions/current without hostelId
+          if (!cur?.subscription || cur.subscription.plan === "FREE") {
+            try {
+              const direct = normalizeSubscriptionCurrent(
+                (await hostelGhar.subscriptions.current()).data
+              );
+              if (direct?.subscription && direct.subscription.plan !== "FREE") {
+                cur = direct;
+              } else if (!cur) {
+                cur = direct;
+              }
+            } catch {
+              /* ignore direct query error */
+            }
+          }
 
-        // Live backend history verification: if history has an ACTIVE paid plan, use it
-        const activePaidHist = hist.find(
-          (h) => h.status === "ACTIVE" && h.plan && h.plan !== "FREE"
-        );
-        if ((!cur?.subscription || cur.subscription.plan === "FREE") && activePaidHist?.plan) {
-          cur = {
-            ...(cur ?? { plan: null, limits: null, daysRemaining: null }),
-            subscription: {
-              id: activePaidHist.id,
-              plan: activePaidHist.plan,
-              status: "ACTIVE",
-              billingCycle: activePaidHist.billingCycle ?? "MONTHLY",
-              price: activePaidHist.price,
-              currency: activePaidHist.currency,
-              startDate: activePaidHist.startDate,
-              endDate: activePaidHist.endDate,
-            },
-          };
-        }
+          let hist: SubscriptionHistoryItem[] = [];
+          try {
+            hist = normalizeSubscriptionHistory((await hostelGhar.subscriptions.history()).data);
+            setHistory(hist);
+          } catch {
+            hist = [];
+            setHistory([]);
+          }
 
-        setCurrent(cur);
-        setCheck(chk);
+          // Live backend history verification: if history has an ACTIVE paid plan, use it
+          const activePaidHist = hist.find(
+            (h) => h.status === "ACTIVE" && h.plan && h.plan !== "FREE"
+          );
+          if ((!cur?.subscription || cur.subscription.plan === "FREE") && activePaidHist?.plan) {
+            cur = {
+              ...(cur ?? { plan: null, limits: null, daysRemaining: null }),
+              subscription: {
+                id: activePaidHist.id,
+                plan: activePaidHist.plan,
+                status: "ACTIVE",
+                billingCycle: activePaidHist.billingCycle ?? "MONTHLY",
+                price: activePaidHist.price,
+                currency: activePaidHist.currency,
+                startDate: activePaidHist.startDate,
+                endDate: activePaidHist.endDate,
+              },
+            };
+          }
 
-        // Derive plan with priority to backend paid active plan
-        const derivedPlan = (cur?.subscription?.plan ??
-          chk?.currentPlan ??
-          activePaidHist?.plan ??
-          user?.subscription.plan ??
-          "FREE") as SubscriptionPlan;
-        const derivedUsed =
-          cur?.limits?.residentCount ?? chk?.currentCount ?? user?.subscription.residentsUsed ?? 0;
-        const derivedLimit =
-          cur?.limits?.residentLimit ??
-          chk?.limit ??
-          (derivedPlan === "PRO" || derivedPlan === "ENTERPRISE" ? null : 10);
+          setCurrent(cur);
+          setCheck(chk);
 
-        // Mirror the LIVE plan into global auth state so plan-gated UI matches backend everywhere
-        syncLiveSubscription(derivedPlan, derivedUsed, derivedLimit);
+          // Derive plan with priority to backend paid active plan
+          const derivedPlan = (cur?.subscription?.plan ??
+            chk?.currentPlan ??
+            activePaidHist?.plan ??
+            user?.subscription.plan ??
+            "FREE") as SubscriptionPlan;
+          const derivedUsed =
+            cur?.limits?.residentCount ??
+            chk?.currentCount ??
+            user?.subscription.residentsUsed ??
+            0;
+          const derivedLimit =
+            cur?.limits?.residentLimit ??
+            chk?.limit ??
+            (derivedPlan === "PRO" || derivedPlan === "ENTERPRISE" ? null : 10);
+
+          // Mirror the LIVE plan into global auth state so plan-gated UI matches backend everywhere
+          syncLiveSubscription(derivedPlan, derivedUsed, derivedLimit);
         } catch (e) {
           setError(toApiError(e).message);
         } finally {

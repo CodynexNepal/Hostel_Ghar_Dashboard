@@ -1,11 +1,7 @@
 "use client";
 /** React hooks for resident + owner attendance views — 100% backend-driven. */
 import { useCallback, useEffect, useState } from "react";
-import {
-  dayKeyLocal,
-  type AttendanceIdentity,
-  type AttendanceRecord,
-} from "./attendance-types";
+import { dayKeyLocal, type AttendanceIdentity, type AttendanceRecord } from "./attendance-types";
 import { ATTENDANCE_EVENT } from "./attendance-store";
 import { fetchBackendHostel, fetchBackendMine } from "./attendance-actions";
 

@@ -6,10 +6,7 @@
 import axios from "axios";
 import api, { getHostelId } from "./axios";
 import { toPaginated } from "./hostelGhar";
-import {
-  type AttendanceIdentity,
-  type AttendanceRecord,
-} from "./attendance-types";
+import { type AttendanceIdentity, type AttendanceRecord } from "./attendance-types";
 import { normalizeRecord, notifyAttendanceChanged } from "./attendance-store";
 
 const PREFIX = "/v1/hostel-ghar";

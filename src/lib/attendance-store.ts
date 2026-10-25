@@ -38,14 +38,12 @@ export function normalizeRecord(raw: unknown): AttendanceRecord | null {
     string,
     unknown
   >;
-  const userObj = (residentObj.user && typeof residentObj.user === "object"
-    ? residentObj.user
-    : {}) as Record<string, unknown>;
+  const userObj = (
+    residentObj.user && typeof residentObj.user === "object" ? residentObj.user : {}
+  ) as Record<string, unknown>;
 
-  const residentId =
-    str(r.residentId ?? residentObj.id ?? r.userId ?? "") || null;
-  const residentEmail =
-    str(r.residentEmail ?? userObj.email ?? r.email ?? "") || undefined;
+  const residentId = str(r.residentId ?? residentObj.id ?? r.userId ?? "") || null;
+  const residentEmail = str(r.residentEmail ?? userObj.email ?? r.email ?? "") || undefined;
 
   const userFirst = str(userObj.firstName ?? userObj.first_name);
   const userLast = str(userObj.lastName ?? userObj.last_name);

@@ -170,7 +170,8 @@ function normalizeUser(raw: unknown, fallback: UserRole): AuthUser {
   const role = normalizeRole(u.role ?? nested?.role) ?? fallback;
   // Normalize the embedded subscription too — backend may send
   // `{ plan: "PRO", residentsLimit: null }` for unlimited.
-  const rawSub = (u.subscription ?? nested?.subscription) as Partial<AuthUser["subscription"]> | undefined;
+  const rawSub = (u.subscription ?? nested?.subscription) as
+    Partial<AuthUser["subscription"]> | undefined;
   const subPlan = (typeof rawSub?.plan === "string" ? rawSub.plan.toUpperCase() : undefined) as
     AuthUser["subscription"]["plan"] | undefined;
   const normLimit = (v: unknown): number | null | undefined => {

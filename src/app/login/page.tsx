@@ -6,16 +6,13 @@ import { LoginForm } from "@/components/auth/LoginForm";
 
 export default function LoginPage() {
   return (
-    <AuthShell
-      title="Sign in to your account"
-      subtitle="Enter your credentials to continue"
-    >
+    <AuthShell title="Sign in">
       <LoginForm />
-      <div className="mt-6 text-center text-sm text-neutral-600">
+      <div className="mt-6 text-center text-sm text-neutral-500">
         Don&apos;t have an account?{" "}
         <Link
           href="/register"
-          className="font-semibold text-neutral-950 hover:underline"
+          className="font-medium text-neutral-900 hover:underline"
         >
           Sign up
         </Link>

@@ -96,6 +96,10 @@ import type {
   CreateInvoicePayload,
   Invoice,
   InvoiceListParams,
+  WeeklyMealSchedule,
+  MealDayItem,
+  HostelLocation,
+  UpdateHostelLocationPayload,
 } from "./api-types";
 import type { Hostel, Room } from "../types/hostel";
 import type { Resident } from "../types/resident";
@@ -3516,6 +3520,27 @@ export const hostelGhar = {
      */
     listActiveQrs: () =>
       getWithRetry<PlatformQr[] | ApiEnvelope<PlatformQr[]>>(`${PREFIX}/platform-qrs`),
+  },
+
+  meals: {
+    /** GET /hostels/:hostelId/meals — weekly meal schedule for a hostel. */
+    get: (hostelId: string) =>
+      getWithRetry<ApiEnvelope<WeeklyMealSchedule>>(`${PREFIX}/hostels/${encodeURIComponent(hostelId)}/meals`),
+    /** PUT /hostels/:hostelId/meals — save weekly meal schedule. */
+    save: (hostelId: string, meals: MealDayItem[]) =>
+      api.put<ApiEnvelope<WeeklyMealSchedule>>(`${PREFIX}/hostels/${encodeURIComponent(hostelId)}/meals`, { meals }),
+    /** DELETE /hostels/:hostelId/meals — clear weekly meal schedule. */
+    clear: (hostelId: string) =>
+      api.delete<ApiEnvelope<WeeklyMealSchedule>>(`${PREFIX}/hostels/${encodeURIComponent(hostelId)}/meals`),
+  },
+
+  location: {
+    /** GET /hostels/:hostelId/location — get location settings and coordinates. */
+    get: (hostelId: string) =>
+      getWithRetry<ApiEnvelope<HostelLocation>>(`${PREFIX}/hostels/${encodeURIComponent(hostelId)}/location`),
+    /** PUT /hostels/:hostelId/location — save coordinates and sharing toggle state. */
+    update: (hostelId: string, payload: UpdateHostelLocationPayload) =>
+      api.put<ApiEnvelope<HostelLocation>>(`${PREFIX}/hostels/${encodeURIComponent(hostelId)}/location`, payload),
   },
 };
 

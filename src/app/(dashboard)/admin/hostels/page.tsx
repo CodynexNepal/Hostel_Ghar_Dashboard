@@ -14,7 +14,9 @@ import { hostelGhar, normalizeHostelList, toApiError } from "@/lib/hostelGhar";
 import { TableSkeleton } from "@/components/ui/Skeleton";
 import { EmptyState, ErrorState } from "@/components/ui/EmptyState";
 import { Input } from "@/components/ui/Input";
-import { Ban, CheckCircle2, ImagePlus, Plus } from "lucide-react";
+import { Ban, CheckCircle2, ImagePlus, Plus, Utensils, MapPin, ExternalLink, Globe } from "lucide-react";
+import type { WeeklyMealSchedule, HostelLocation } from "@/lib/api-types";
+import { unwrap } from "@/lib/hostelGhar";
 
 const EMPTY_FORM = {
   name: "",
@@ -43,6 +45,25 @@ export default function AdminHostelsPage() {
   const logoRef = useRef<HTMLInputElement | null>(null);
   const [statusTarget, setStatusTarget] = useState<Hostel | null>(null);
   const [isToggling, setIsToggling] = useState(false);
+  const [viewTarget, setViewTarget] = useState<Hostel | null>(null);
+  const [viewMeals, setViewMeals] = useState<WeeklyMealSchedule | null>(null);
+  const [viewLocation, setViewLocation] = useState<HostelLocation | null>(null);
+  const [isDetailLoading, setIsDetailLoading] = useState(false);
+
+  const handleViewHostel = async (h: Hostel) => {
+    setViewTarget(h);
+    setIsDetailLoading(true);
+    try {
+      const [mealsRes, locRes] = await Promise.all([
+        hostelGhar.meals.get(h.id).catch(() => null),
+        hostelGhar.location.get(h.id).catch(() => null),
+      ]);
+      setViewMeals(mealsRes ? unwrap<WeeklyMealSchedule>(mealsRes.data) : null);
+      setViewLocation(locRes ? unwrap<HostelLocation>(locRes.data) : null);
+    } finally {
+      setIsDetailLoading(false);
+    }
+  };
   // Optimistic status overrides — applied instantly on suspend/activate so the
   // badge flips even before (or if) the list refetch returns the new row.
   const [statusOverride, setStatusOverride] = useState<Record<string, Hostel["status"]>>({});
@@ -278,7 +299,7 @@ export default function AdminHostelsPage() {
             <Button
               size="sm"
               variant="outline"
-              onClick={() => success("Hostel opened", hostel.name)}
+              onClick={() => handleViewHostel(hostel)}
             >
               View
             </Button>
@@ -535,6 +556,130 @@ export default function AdminHostelsPage() {
                     <CheckCircle2 className="h-4 w-4" /> Re-activate
                   </>
                 )}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Admin Hostel Overview & Features Modal */}
+      <Modal
+        open={Boolean(viewTarget)}
+        onClose={() => setViewTarget(null)}
+        title={viewTarget ? `${viewTarget.name} — Overview & Settings` : "Hostel Overview"}
+      >
+        {viewTarget && (
+          <div className="space-y-5 max-h-[75vh] overflow-y-auto pr-1">
+            {/* Basic Info */}
+            <div className="grid grid-cols-2 gap-3 p-3.5 rounded-xl bg-neutral-50 border border-neutral-200 text-xs">
+              <div>
+                <span className="text-neutral-400 block uppercase text-[10px]">Hostel Type</span>
+                <span className="font-semibold text-neutral-800">{viewTarget.type || "N/A"}</span>
+              </div>
+              <div>
+                <span className="text-neutral-400 block uppercase text-[10px]">Location</span>
+                <span className="font-semibold text-neutral-800">
+                  {[viewTarget.address, viewTarget.city].filter(Boolean).join(", ") || "N/A"}
+                </span>
+              </div>
+              <div>
+                <span className="text-neutral-400 block uppercase text-[10px]">Contact</span>
+                <span className="font-semibold text-neutral-800">{viewTarget.phone || viewTarget.email || "N/A"}</span>
+              </div>
+              <div>
+                <span className="text-neutral-400 block uppercase text-[10px]">Status</span>
+                <Badge tone={statusTone(viewTarget.status)}>{viewTarget.status}</Badge>
+              </div>
+            </div>
+
+            {/* Geographic Location Status */}
+            <div className="p-4 rounded-xl border border-neutral-200 bg-white space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <MapPin size={16} className="text-neutral-700" />
+                  <h3 className="font-bold text-xs text-neutral-900">Geographic Location Sharing</h3>
+                </div>
+                {viewLocation?.isLocationShared && viewLocation.latitude && viewLocation.longitude ? (
+                  <Badge tone="green" className="text-[10px]">Publicly Shared</Badge>
+                ) : viewLocation?.latitude && viewLocation.longitude ? (
+                  <Badge tone="gray" className="text-[10px]">Saved (Hidden)</Badge>
+                ) : (
+                  <Badge tone="amber" className="text-[10px]">Not Configured</Badge>
+                )}
+              </div>
+
+              {isDetailLoading ? (
+                <p className="text-xs text-neutral-400">Loading location data...</p>
+              ) : viewLocation?.latitude && viewLocation?.longitude ? (
+                <div className="space-y-2">
+                  <p className="text-xs font-mono text-neutral-700">
+                    Coordinates: <strong>{viewLocation.latitude.toFixed(6)}, {viewLocation.longitude.toFixed(6)}</strong>
+                  </p>
+                  <a
+                    href={`https://www.google.com/maps/dir/?api=1&destination=${viewLocation.latitude},${viewLocation.longitude}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-xs text-brand-black font-semibold hover:underline"
+                  >
+                    View on Google Maps <ExternalLink size={12} />
+                  </a>
+                </div>
+              ) : (
+                <p className="text-xs text-neutral-500 italic">
+                  Hostel owner has not configured GPS coordinates yet.
+                </p>
+              )}
+            </div>
+
+            {/* Weekly Meal Schedule Status */}
+            <div className="p-4 rounded-xl border border-neutral-200 bg-white space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Utensils size={16} className="text-neutral-700" />
+                  <h3 className="font-bold text-xs text-neutral-900">Weekly Meal Schedule</h3>
+                </div>
+                {viewMeals?.hasSchedule ? (
+                  <Badge tone="green" className="text-[10px]">Published</Badge>
+                ) : (
+                  <Badge tone="gray" className="text-[10px]">Not Configured</Badge>
+                )}
+              </div>
+
+              {isDetailLoading ? (
+                <p className="text-xs text-neutral-400">Loading meals data...</p>
+              ) : viewMeals?.hasSchedule ? (
+                <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                  {viewMeals.schedule.map((day) => {
+                    const hasB = Boolean(day.breakfastDescription?.trim());
+                    const hasM = Boolean(day.mainMealDescription?.trim());
+                    if (!hasB && !hasM) return null;
+                    return (
+                      <div key={day.dayOfWeek} className="p-2 rounded-lg bg-neutral-50 text-xs space-y-1">
+                        <span className="font-bold text-neutral-800">{day.dayOfWeek}</span>
+                        {hasB && (
+                          <p className="text-[11px] text-neutral-600">
+                            <strong>Breakfast:</strong> {day.breakfastDescription}
+                          </p>
+                        )}
+                        {hasM && (
+                          <p className="text-[11px] text-neutral-600">
+                            <strong>Main:</strong> {day.mainMealDescription}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="text-xs text-neutral-500 italic">
+                  Hostel owner has not configured the weekly meal menu yet.
+                </p>
+              )}
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <Button variant="outline" size="sm" onClick={() => setViewTarget(null)}>
+                Close
               </Button>
             </div>
           </div>

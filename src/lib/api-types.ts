@@ -1366,3 +1366,54 @@ export interface StaffListParams extends ListParams {
   role?: string;
   status?: string;
 }
+
+/* ---------------- Weekly Meals & Menu ---------------- */
+export type DayOfWeek =
+  | 'SUNDAY'
+  | 'MONDAY'
+  | 'TUESDAY'
+  | 'WEDNESDAY'
+  | 'THURSDAY'
+  | 'FRIDAY'
+  | 'SATURDAY';
+
+export interface MealDayItem {
+  id?: string | null;
+  dayOfWeek: DayOfWeek;
+  breakfastDescription?: string | null;
+  breakfastTime?: string | null;
+  breakfastNotes?: string | null;
+  mainMealDescription?: string | null;
+  mainMealTime?: string | null;
+  mainMealNotes?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+}
+
+export interface WeeklyMealSchedule {
+  hostelId: string;
+  hasSchedule: boolean;
+  lastUpdatedAt: string | null;
+  schedule: MealDayItem[];
+}
+
+export interface SaveWeeklyMealsPayload {
+  meals: MealDayItem[];
+}
+
+/* ---------------- Hostel Exact Location ---------------- */
+export interface HostelLocation {
+  hostelId: string;
+  latitude: number | null;
+  longitude: number | null;
+  isLocationShared: boolean;
+  locationUpdatedAt: string | null;
+  address: string | null;
+  city: string | null;
+}
+
+export interface UpdateHostelLocationPayload {
+  latitude?: number | null;
+  longitude?: number | null;
+  isLocationShared: boolean;
+}

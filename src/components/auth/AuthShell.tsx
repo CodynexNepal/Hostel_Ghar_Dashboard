@@ -26,15 +26,9 @@ export function AuthShell({ children, title, subtitle }: AuthShellProps) {
             </div>
           </Link>
           {title && (
-            <h1 className="mt-4 text-2xl font-bold tracking-tight text-neutral-900">
-              {title}
-            </h1>
+            <h1 className="mt-4 text-2xl font-bold tracking-tight text-neutral-900">{title}</h1>
           )}
-          {subtitle && (
-            <p className="mt-1 text-sm text-neutral-500">
-              {subtitle}
-            </p>
-          )}
+          {subtitle && <p className="mt-1 text-sm text-neutral-500">{subtitle}</p>}
         </div>
 
         {/* Card */}

@@ -88,30 +88,33 @@ export default function HostelLocationPage() {
   }, [user?.hostelId]);
 
   // 2. Fetch location for active hostel
-  const loadLocation = useCallback(async (hid: string) => {
-    setIsLoading(true);
-    try {
-      const res = await hostelGhar.location.get(hid);
-      const data = unwrap<HostelLocation>(res.data);
-      if (data) {
-        setSavedLat(data.latitude ?? null);
-        setSavedLng(data.longitude ?? null);
-        setIsShared(Boolean(data.isLocationShared));
-        setLocationUpdatedAt(data.locationUpdatedAt ?? null);
-        setHostelAddress(data.address || "");
-        setHostelCity(data.city || "");
+  const loadLocation = useCallback(
+    async (hid: string) => {
+      setIsLoading(true);
+      try {
+        const res = await hostelGhar.location.get(hid);
+        const data = unwrap<HostelLocation>(res.data);
+        if (data) {
+          setSavedLat(data.latitude ?? null);
+          setSavedLng(data.longitude ?? null);
+          setIsShared(Boolean(data.isLocationShared));
+          setLocationUpdatedAt(data.locationUpdatedAt ?? null);
+          setHostelAddress(data.address || "");
+          setHostelCity(data.city || "");
 
-        // Initialize staging state
-        setStagedLat(data.latitude !== null ? String(data.latitude) : "");
-        setStagedLng(data.longitude !== null ? String(data.longitude) : "");
-        setStagedSharing(Boolean(data.isLocationShared));
+          // Initialize staging state
+          setStagedLat(data.latitude !== null ? String(data.latitude) : "");
+          setStagedLng(data.longitude !== null ? String(data.longitude) : "");
+          setStagedSharing(Boolean(data.isLocationShared));
+        }
+      } catch {
+        toastError("Failed to load hostel location settings.");
+      } finally {
+        setIsLoading(false);
       }
-    } catch {
-      toastError("Failed to load hostel location settings.");
-    } finally {
-      setIsLoading(false);
-    }
-  }, [toastError]);
+    },
+    [toastError]
+  );
 
   useEffect(() => {
     if (activeHostelId) {
@@ -167,7 +170,8 @@ export default function HostelLocationPage() {
         setIsDetecting(false);
         let msg = "Could not obtain device location.";
         if (err.code === err.PERMISSION_DENIED) {
-          msg = "Location permission denied. Please allow location access in your browser or enter coordinates manually below.";
+          msg =
+            "Location permission denied. Please allow location access in your browser or enter coordinates manually below.";
         } else if (err.code === err.POSITION_UNAVAILABLE) {
           msg = "Position unavailable. Please pick a nearby preset or enter coordinates manually.";
         } else if (err.code === err.TIMEOUT) {
@@ -242,12 +246,12 @@ export default function HostelLocationPage() {
         title="Location & Map"
         subtitle="Manage and share the exact geographic coordinates of your hostel."
       >
-        <div className="space-y-6 max-w-5xl mx-auto pb-16">
+        <div className="mx-auto max-w-5xl space-y-6 pb-16">
           {/* Page Header */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-neutral-200/80 pb-5">
+          <div className="flex flex-col justify-between gap-4 border-b border-neutral-200/80 pb-5 sm:flex-row sm:items-center">
             <div>
-              <div className="flex items-center gap-2 mb-1">
-                <span className="p-2 rounded-xl bg-brand-lime/20 text-brand-black">
+              <div className="mb-1 flex items-center gap-2">
+                <span className="bg-brand-lime/20 text-brand-black rounded-xl p-2">
                   <MapPin size={20} className="text-brand-black" />
                 </span>
                 <h1 className="text-2xl font-bold tracking-tight text-neutral-900">
@@ -267,14 +271,15 @@ export default function HostelLocationPage() {
                   </Badge>
                 )}
               </div>
-              <p className="text-sm text-neutral-500 max-w-2xl">
-                Configure the exact geographic coordinates of your hostel. When public sharing is enabled,
-                prospective residents can view your interactive map and tap &quot;Get Directions&quot;.
+              <p className="max-w-2xl text-sm text-neutral-500">
+                Configure the exact geographic coordinates of your hostel. When public sharing is
+                enabled, prospective residents can view your interactive map and tap &quot;Get
+                Directions&quot;.
               </p>
             </div>
 
             {locationUpdatedAt && (
-              <div className="text-right text-xs text-neutral-500 shrink-0">
+              <div className="shrink-0 text-right text-xs text-neutral-500">
                 <p>Last updated:</p>
                 <p className="font-semibold text-neutral-700">
                   {new Date(locationUpdatedAt).toLocaleDateString("en-US", {
@@ -295,39 +300,39 @@ export default function HostelLocationPage() {
           ) : (
             <div className="space-y-6">
               {/* Status & Sharing Toggle Card */}
-              <Card className="p-5 border-neutral-200 shadow-xs rounded-2xl bg-white">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <Card className="shadow-xs rounded-2xl border-neutral-200 bg-white p-5">
+                <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
-                      <span className="font-bold text-neutral-900 text-base">
+                      <span className="text-base font-bold text-neutral-900">
                         Public Location Sharing
                       </span>
                       {stagedSharing ? (
-                        <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold">
+                        <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-800">
                           Active
                         </span>
                       ) : (
-                        <span className="px-2 py-0.5 rounded-full bg-neutral-200 text-neutral-700 text-xs font-medium">
+                        <span className="rounded-full bg-neutral-200 px-2 py-0.5 text-xs font-medium text-neutral-700">
                           Disabled
                         </span>
                       )}
                     </div>
-                    <p className="text-xs text-neutral-500 max-w-xl">
+                    <p className="max-w-xl text-xs text-neutral-500">
                       {stagedSharing
                         ? "Your hostel coordinates are published. Students and visitors can view the map and get GPS directions."
                         : "Your hostel location is hidden from public visitors. Coordinates remain safely saved in your dashboard."}
                     </p>
                   </div>
 
-                  <div className="flex items-center gap-3 shrink-0">
-                    <label className="relative inline-flex items-center cursor-pointer">
+                  <div className="flex shrink-0 items-center gap-3">
+                    <label className="relative inline-flex cursor-pointer items-center">
                       <input
                         type="checkbox"
                         checked={stagedSharing}
                         onChange={(e) => setStagedSharing(e.target.checked)}
-                        className="sr-only peer"
+                        className="peer sr-only"
                       />
-                      <div className="w-12 h-6 bg-neutral-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-neutral-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-black"></div>
+                      <div className="peer-checked:bg-brand-black peer h-6 w-12 rounded-full bg-neutral-200 after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:border after:border-neutral-300 after:bg-white after:transition-all after:content-[''] peer-checked:after:translate-x-full peer-checked:after:border-white peer-focus:outline-none"></div>
                       <span className="ml-2.5 text-xs font-semibold text-neutral-800">
                         {stagedSharing ? "Sharing Enabled" : "Sharing Disabled"}
                       </span>
@@ -338,18 +343,27 @@ export default function HostelLocationPage() {
 
               {/* Action Banner / Staged Confirmation */}
               {showConfirmBanner && (
-                <div className="p-4 rounded-2xl bg-brand-lime/20 border border-brand-lime text-brand-black flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+                <div className="bg-brand-lime/20 border-brand-lime text-brand-black shadow-xs flex flex-col justify-between gap-3 rounded-2xl border p-4 sm:flex-row sm:items-center">
                   <div className="flex items-center gap-2.5">
                     <LocateFixed size={18} className="text-brand-black shrink-0" />
                     <div>
-                      <p className="font-bold text-sm">New coordinates detected!</p>
+                      <p className="text-sm font-bold">New coordinates detected!</p>
                       <p className="text-xs text-neutral-700">
-                        Device coordinates: <strong>{stagedLat}, {stagedLng}</strong>. Verify the map marker below before submitting.
+                        Device coordinates:{" "}
+                        <strong>
+                          {stagedLat}, {stagedLng}
+                        </strong>
+                        . Verify the map marker below before submitting.
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <Button variant="outline" size="sm" onClick={handleCancelStaging} className="bg-white text-xs">
+                  <div className="flex shrink-0 items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleCancelStaging}
+                      className="bg-white text-xs"
+                    >
                       Cancel
                     </Button>
                     <Button
@@ -357,7 +371,7 @@ export default function HostelLocationPage() {
                       size="sm"
                       onClick={handleSubmitLocation}
                       loading={isSaving}
-                      className="bg-brand-black text-white hover:bg-neutral-800 text-xs font-bold"
+                      className="bg-brand-black text-xs font-bold text-white hover:bg-neutral-800"
                     >
                       Submit Location
                     </Button>
@@ -366,51 +380,54 @@ export default function HostelLocationPage() {
               )}
 
               {/* Geolocation Acquisition & Presets */}
-              <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+              <div className="grid grid-cols-1 gap-6 md:grid-cols-12">
                 {/* Acquisition Controls (5 cols) */}
-                <div className="md:col-span-5 space-y-4">
-                  <Card className="p-5 border-neutral-200 shadow-xs rounded-2xl bg-white space-y-4">
-                    <div className="flex items-center gap-2 pb-2 border-b border-neutral-100">
+                <div className="space-y-4 md:col-span-5">
+                  <Card className="shadow-xs space-y-4 rounded-2xl border-neutral-200 bg-white p-5">
+                    <div className="flex items-center gap-2 border-b border-neutral-100 pb-2">
                       <Crosshair size={16} className="text-neutral-700" />
-                      <h2 className="font-bold text-sm text-neutral-900">Coordinate Detection</h2>
+                      <h2 className="text-sm font-bold text-neutral-900">Coordinate Detection</h2>
                     </div>
 
                     <div className="space-y-3">
-                      <p className="text-xs text-neutral-500 leading-relaxed">
-                        Click the button below while physically at your hostel building to detect coordinates via browser geolocation.
+                      <p className="text-xs leading-relaxed text-neutral-500">
+                        Click the button below while physically at your hostel building to detect
+                        coordinates via browser geolocation.
                       </p>
 
                       <Button
                         variant="primary"
                         onClick={handleDetectLocation}
                         loading={isDetecting}
-                        className="w-full bg-brand-lime text-brand-black hover:bg-brand-lime/90 font-bold py-2.5 rounded-xl shadow-xs"
+                        className="bg-brand-lime text-brand-black hover:bg-brand-lime/90 shadow-xs w-full rounded-xl py-2.5 font-bold"
                       >
                         <LocateFixed size={16} className="mr-2" />
                         {hasConfiguredLocation ? "Update Location" : "Share Location"}
                       </Button>
 
                       {geoError && (
-                        <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-start gap-2">
-                          <AlertCircle size={15} className="shrink-0 mt-0.5 text-rose-600" />
+                        <div className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800">
+                          <AlertCircle size={15} className="mt-0.5 shrink-0 text-rose-600" />
                           <span>{geoError}</span>
                         </div>
                       )}
 
-                      <div className="p-3 rounded-xl bg-amber-50/70 border border-amber-200/70 text-amber-900 text-[11px] leading-relaxed flex items-start gap-2">
-                        <Info size={14} className="shrink-0 mt-0.5 text-amber-600" />
+                      <div className="flex items-start gap-2 rounded-xl border border-amber-200/70 bg-amber-50/70 p-3 text-[11px] leading-relaxed text-amber-900">
+                        <Info size={14} className="mt-0.5 shrink-0 text-amber-600" />
                         <span>
-                          Device geolocation identifies where your phone/laptop is currently situated. If you are configuring from home, please adjust the pin or pick a preset below.
+                          Device geolocation identifies where your phone/laptop is currently
+                          situated. If you are configuring from home, please adjust the pin or pick
+                          a preset below.
                         </span>
                       </div>
                     </div>
 
                     {/* Manual Input Fields */}
-                    <div className="pt-3 border-t border-neutral-100 space-y-3">
-                      <h3 className="font-bold text-xs text-neutral-800">Manual Coordinates</h3>
+                    <div className="space-y-3 border-t border-neutral-100 pt-3">
+                      <h3 className="text-xs font-bold text-neutral-800">Manual Coordinates</h3>
                       <div className="grid grid-cols-2 gap-2.5">
                         <div>
-                          <label className="block text-[11px] font-semibold text-neutral-600 mb-1">
+                          <label className="mb-1 block text-[11px] font-semibold text-neutral-600">
                             Latitude (-90 to 90)
                           </label>
                           <input
@@ -418,11 +435,11 @@ export default function HostelLocationPage() {
                             value={stagedLat}
                             onChange={(e) => setStagedLat(e.target.value)}
                             placeholder="e.g. 27.7172"
-                            className="w-full px-3 py-1.5 rounded-xl border border-neutral-200 text-xs focus:ring-2 focus:ring-brand-lime"
+                            className="focus:ring-brand-lime w-full rounded-xl border border-neutral-200 px-3 py-1.5 text-xs focus:ring-2"
                           />
                         </div>
                         <div>
-                          <label className="block text-[11px] font-semibold text-neutral-600 mb-1">
+                          <label className="mb-1 block text-[11px] font-semibold text-neutral-600">
                             Longitude (-180 to 180)
                           </label>
                           <input
@@ -430,14 +447,14 @@ export default function HostelLocationPage() {
                             value={stagedLng}
                             onChange={(e) => setStagedLng(e.target.value)}
                             placeholder="e.g. 85.3240"
-                            className="w-full px-3 py-1.5 rounded-xl border border-neutral-200 text-xs focus:ring-2 focus:ring-brand-lime"
+                            className="focus:ring-brand-lime w-full rounded-xl border border-neutral-200 px-3 py-1.5 text-xs focus:ring-2"
                           />
                         </div>
                       </div>
 
                       {/* Nepal City Quick Presets */}
                       <div>
-                        <label className="block text-[11px] font-semibold text-neutral-500 mb-1.5">
+                        <label className="mb-1.5 block text-[11px] font-semibold text-neutral-500">
                           Nepal Quick Presets:
                         </label>
                         <div className="flex flex-wrap gap-1.5">
@@ -449,7 +466,7 @@ export default function HostelLocationPage() {
                                 setStagedLat(String(p.lat));
                                 setStagedLng(String(p.lng));
                               }}
-                              className="text-[10px] px-2 py-1 rounded-lg bg-neutral-100 hover:bg-neutral-200 text-neutral-700 transition-colors"
+                              className="rounded-lg bg-neutral-100 px-2 py-1 text-[10px] text-neutral-700 transition-colors hover:bg-neutral-200"
                             >
                               {p.name.split(" ")[0]} ({p.name.split(" ")[1]?.replace("(", "")})
                             </button>
@@ -459,9 +476,14 @@ export default function HostelLocationPage() {
                     </div>
 
                     {/* Action buttons */}
-                    <div className="pt-3 border-t border-neutral-100 flex items-center justify-between gap-2">
+                    <div className="flex items-center justify-between gap-2 border-t border-neutral-100 pt-3">
                       {isDirty && (
-                        <Button variant="ghost" size="sm" onClick={handleCancelStaging} className="text-xs">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={handleCancelStaging}
+                          className="text-xs"
+                        >
                           Reset
                         </Button>
                       )}
@@ -471,7 +493,7 @@ export default function HostelLocationPage() {
                         onClick={handleSubmitLocation}
                         loading={isSaving}
                         disabled={!hasValidStagedCoords && stagedSharing}
-                        className="bg-brand-black text-white hover:bg-neutral-800 text-xs font-semibold ml-auto"
+                        className="bg-brand-black ml-auto text-xs font-semibold text-white hover:bg-neutral-800"
                       >
                         <Save size={14} className="mr-1.5" /> Save Changes
                       </Button>
@@ -480,19 +502,21 @@ export default function HostelLocationPage() {
                 </div>
 
                 {/* Map Preview & Details (7 cols) */}
-                <div className="md:col-span-7 space-y-4">
-                  <Card className="p-5 border-neutral-200 shadow-xs rounded-2xl bg-white space-y-4">
-                    <div className="flex items-center justify-between pb-2 border-b border-neutral-100">
+                <div className="space-y-4 md:col-span-7">
+                  <Card className="shadow-xs space-y-4 rounded-2xl border-neutral-200 bg-white p-5">
+                    <div className="flex items-center justify-between border-b border-neutral-100 pb-2">
                       <div className="flex items-center gap-2">
                         <Globe size={16} className="text-neutral-700" />
-                        <h2 className="font-bold text-sm text-neutral-900">Map & Listing Preview</h2>
+                        <h2 className="text-sm font-bold text-neutral-900">
+                          Map & Listing Preview
+                        </h2>
                       </div>
                       {previewLat && previewLng && (
                         <a
                           href={`https://www.google.com/maps/dir/?api=1&destination=${previewLat},${previewLng}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-xs text-brand-black hover:underline flex items-center gap-1 font-semibold"
+                          className="text-brand-black flex items-center gap-1 text-xs font-semibold hover:underline"
                         >
                           Open Google Maps <ExternalLink size={12} />
                         </a>
@@ -502,7 +526,7 @@ export default function HostelLocationPage() {
                     {/* Embedded OpenStreetMap Preview */}
                     {previewLat && previewLng ? (
                       <div className="space-y-3">
-                        <div className="relative aspect-video rounded-xl overflow-hidden border border-neutral-200 bg-neutral-100 shadow-inner">
+                        <div className="relative aspect-video overflow-hidden rounded-xl border border-neutral-200 bg-neutral-100 shadow-inner">
                           <iframe
                             title="Hostel Map Preview"
                             width="100%"
@@ -512,32 +536,40 @@ export default function HostelLocationPage() {
                             marginHeight={0}
                             marginWidth={0}
                             src={`https://www.openstreetmap.org/export/embed.html?bbox=${previewLng - 0.005}%2C${previewLat - 0.003}%2C${previewLng + 0.005}%2C${previewLat + 0.003}&layer=mapnik&marker=${previewLat}%2C${previewLng}`}
-                            className="w-full h-full"
+                            className="h-full w-full"
                           />
                         </div>
 
                         {/* Location Meta Footer */}
-                        <div className="grid grid-cols-2 gap-3 p-3 rounded-xl bg-neutral-50 border border-neutral-100 text-xs">
+                        <div className="grid grid-cols-2 gap-3 rounded-xl border border-neutral-100 bg-neutral-50 p-3 text-xs">
                           <div>
-                            <span className="text-neutral-400 block text-[10px] uppercase">Coordinates</span>
+                            <span className="block text-[10px] uppercase text-neutral-400">
+                              Coordinates
+                            </span>
                             <span className="font-mono font-semibold text-neutral-800">
                               {previewLat.toFixed(5)}, {previewLng.toFixed(5)}
                             </span>
                           </div>
                           <div>
-                            <span className="text-neutral-400 block text-[10px] uppercase">Registered Address</span>
-                            <span className="font-medium text-neutral-800 truncate block">
-                              {[hostelAddress, hostelCity].filter(Boolean).join(", ") || "Address on file"}
+                            <span className="block text-[10px] uppercase text-neutral-400">
+                              Registered Address
+                            </span>
+                            <span className="block truncate font-medium text-neutral-800">
+                              {[hostelAddress, hostelCity].filter(Boolean).join(", ") ||
+                                "Address on file"}
                             </span>
                           </div>
                         </div>
                       </div>
                     ) : (
-                      <div className="aspect-video rounded-xl border border-dashed border-neutral-300 bg-neutral-50 flex flex-col items-center justify-center p-6 text-center text-neutral-400 space-y-2">
-                        <MapPin size={32} className="text-neutral-300 stroke-1" />
-                        <p className="text-sm font-semibold text-neutral-600">No Location Configured Yet</p>
-                        <p className="text-xs text-neutral-400 max-w-sm">
-                          Click &quot;Share Location&quot; to auto-detect your building&apos;s GPS position, or enter coordinates manually.
+                      <div className="flex aspect-video flex-col items-center justify-center space-y-2 rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-6 text-center text-neutral-400">
+                        <MapPin size={32} className="stroke-1 text-neutral-300" />
+                        <p className="text-sm font-semibold text-neutral-600">
+                          No Location Configured Yet
+                        </p>
+                        <p className="max-w-sm text-xs text-neutral-400">
+                          Click &quot;Share Location&quot; to auto-detect your building&apos;s GPS
+                          position, or enter coordinates manually.
                         </p>
                       </div>
                     )}

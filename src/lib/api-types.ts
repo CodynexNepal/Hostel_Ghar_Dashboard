@@ -1369,13 +1369,7 @@ export interface StaffListParams extends ListParams {
 
 /* ---------------- Weekly Meals & Menu ---------------- */
 export type DayOfWeek =
-  | 'SUNDAY'
-  | 'MONDAY'
-  | 'TUESDAY'
-  | 'WEDNESDAY'
-  | 'THURSDAY'
-  | 'FRIDAY'
-  | 'SATURDAY';
+  "SUNDAY" | "MONDAY" | "TUESDAY" | "WEDNESDAY" | "THURSDAY" | "FRIDAY" | "SATURDAY";
 
 export interface MealDayItem {
   id?: string | null;
@@ -1392,9 +1386,11 @@ export interface MealDayItem {
 
 export interface WeeklyMealSchedule {
   hostelId: string;
-  hasSchedule: boolean;
-  lastUpdatedAt: string | null;
-  schedule: MealDayItem[];
+  hasSchedule?: boolean;
+  lastUpdatedAt?: string | null;
+  updatedAt?: string | null;
+  schedule?: MealDayItem[];
+  days?: MealDayItem[];
 }
 
 export interface SaveWeeklyMealsPayload {

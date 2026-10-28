@@ -48,8 +48,8 @@ export default function ForgotPasswordPage() {
           </span>
           <p className="mt-4 text-base font-bold text-neutral-950">Check your inbox</p>
           <p className="mx-auto mt-2 max-w-[300px] text-sm leading-6 text-neutral-600">
-            We sent a reset link to{" "}
-            <span className="font-semibold text-neutral-900">{sentTo}</span>.
+            We sent a reset link to <span className="font-semibold text-neutral-900">{sentTo}</span>
+            .
           </p>
           <Button variant="outline" className="mt-5 w-full" onClick={() => setSentTo(null)}>
             Try a different email

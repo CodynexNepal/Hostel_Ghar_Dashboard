@@ -12,9 +12,13 @@ import {
   AlertCircle,
   CheckCircle2,
   Eye,
-  Calendar,
-  Copy,
+  ArrowUp,
+  ArrowDown,
   Sparkles,
+  Coffee,
+  Sun,
+  Moon,
+  Info,
   Check,
 } from "lucide-react";
 import { DashboardShell } from "@/components/layout/DashboardShell";
@@ -32,60 +36,55 @@ import { getHostelId, toApiError } from "@/lib/axios";
 import { hostelGhar, normalizeOwnerDashboard, unwrap, validHostelId } from "@/lib/hostelGhar";
 import type { DailyMealItem, DailyMealSchedule } from "@/lib/api-types";
 
-const DAYS_OF_WEEK = [
-  { key: "ALL", labelNp: "सबै दिन", labelEn: "All Days (General)", shortNp: "सबै", shortEn: "All" },
-  { key: "SUNDAY", labelNp: "आइतबार", labelEn: "Sunday", shortNp: "आइत", shortEn: "Sun" },
-  { key: "MONDAY", labelNp: "सोमबार", labelEn: "Monday", shortNp: "सोम", shortEn: "Mon" },
-  { key: "TUESDAY", labelNp: "मंगलबार", labelEn: "Tuesday", shortNp: "मंगल", shortEn: "Tue" },
-  { key: "WEDNESDAY", labelNp: "बुधबार", labelEn: "Wednesday", shortNp: "बुध", shortEn: "Wed" },
-  { key: "THURSDAY", labelNp: "बिहीबार", labelEn: "Thursday", shortNp: "बिही", shortEn: "Thu" },
-  { key: "FRIDAY", labelNp: "शुक्रबार", labelEn: "Friday", shortNp: "शुक्र", shortEn: "Fri" },
-  { key: "SATURDAY", labelNp: "शनिबार", labelEn: "Saturday", shortNp: "शनि", shortEn: "Sat" },
-] as const;
-
-type DayKey = (typeof DAYS_OF_WEEK)[number]["key"];
-
 const DEFAULT_MEAL_SLOTS: DailyMealItem[] = [
   {
-    mealName: "बिहानको नास्ता",
-    mealNameEn: "Morning Breakfast",
-    time: "7:00 AM–8:00 AM",
-    menuDescription: "चिया, पाउरोटी, अण्डा वा बिस्कुट (Milk Tea, Bread, Boiled Eggs / Biscuits)",
+    mealName: "Morning Breakfast",
+    mealNameEn: "Breakfast",
+    time: "7:00 AM – 8:00 AM",
+    menuDescription: "Milk Tea, Boiled Eggs, Toast with Jam, or Bread & Butter",
     isActive: true,
     orderIndex: 1,
   },
   {
-    mealName: "बिहानको खाजा",
-    mealNameEn: "Morning Khaja",
-    time: "10:00 AM–11:00 AM",
-    menuDescription: "चना, चिउरा वा हलुवा पुरी (Fried Grams, Beaten Rice / Puri)",
+    mealName: "Morning Snack",
+    mealNameEn: "Light Khaja",
+    time: "10:00 AM – 11:00 AM",
+    menuDescription: "Fried Grams (Chana), Beaten Rice (Chiura), Black Tea",
     isActive: true,
     orderIndex: 2,
   },
   {
-    mealName: "दिउँसोको खाना",
-    mealNameEn: "Lunch / Khana",
-    time: "12:00 PM–1:00 PM",
-    menuDescription: "दाल, भात, तरकारी, अचार, सलाद (Rice, Lentils, Seasonal Curry, Pickle)",
+    mealName: "Lunch",
+    mealNameEn: "Main Meal",
+    time: "12:00 PM – 1:30 PM",
+    menuDescription: "Steamed Rice, Lentils (Dal), Seasonal Curry, Papad, and Fresh Pickle",
     isActive: true,
     orderIndex: 3,
   },
   {
-    mealName: "दिउँसोको खाजा",
-    mealNameEn: "Afternoon Khaja",
-    time: "2:00 PM–3:00 PM",
-    menuDescription: "चाउमिन, समोसा वा चिया बिस्कुट (Chowmein, Samosa / Tea)",
+    mealName: "Afternoon Snack",
+    mealNameEn: "Evening Khaja",
+    time: "4:00 PM – 5:00 PM",
+    menuDescription: "Chowmein, Samosa, or Biscuits served with Hot Tea",
     isActive: true,
     orderIndex: 4,
   },
   {
-    mealName: "बेलुकाको खाना",
-    mealNameEn: "Dinner / Khana",
-    time: "7:00 PM–8:00 PM",
-    menuDescription: "भात, दाल, तरकारी / चिकन करी वा पनीर (Rice, Lentils, Veg / Chicken / Paneer)",
+    mealName: "Dinner",
+    mealNameEn: "Evening Meal",
+    time: "7:30 PM – 9:00 PM",
+    menuDescription: "Steamed Rice, Yellow Dal, Chicken / Paneer Curry, and Seasonal Green Saag",
     isActive: true,
     orderIndex: 5,
   },
+];
+
+const QUICK_TIME_PRESETS = [
+  { label: "Morning Breakfast", time: "7:00 AM – 8:30 AM" },
+  { label: "Morning Snack", time: "10:00 AM – 11:00 AM" },
+  { label: "Afternoon Lunch", time: "12:00 PM – 1:30 PM" },
+  { label: "Evening Snack", time: "4:00 PM – 5:00 PM" },
+  { label: "Night Dinner", time: "7:30 PM – 9:00 PM" },
 ];
 
 export default function DailyMealsPage() {
@@ -93,11 +92,6 @@ export default function DailyMealsPage() {
   const { success, error: toastError } = useToast();
 
   const [activeHostelId, setActiveHostelId] = useState<string | null>(null);
-  const [selectedDay, setSelectedDay] = useState<DayKey>("ALL");
-  const [configuredDays, setConfiguredDays] = useState<string[]>([]);
-  const [allDaysFallbackMeals, setAllDaysFallbackMeals] =
-    useState<DailyMealItem[]>(DEFAULT_MEAL_SLOTS);
-
   const [meals, setMeals] = useState<DailyMealItem[]>([]);
   const [originalMeals, setOriginalMeals] = useState<DailyMealItem[]>([]);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
@@ -112,17 +106,14 @@ export default function DailyMealsPage() {
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [deletingIndex, setDeletingIndex] = useState<number | null>(null);
-  const [clearModalOpen, setClearModalOpen] = useState(false);
+  const [resetModalOpen, setResetModalOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
-  const [copyModalOpen, setCopyModalOpen] = useState(false);
-  const [targetDaysToCopy, setTargetDaysToCopy] = useState<string[]>([]);
 
   // Form State for Add / Edit
   const [formMealName, setFormMealName] = useState("");
   const [formMealNameEn, setFormMealNameEn] = useState("");
   const [formTime, setFormTime] = useState("");
   const [formMenuDescription, setFormMenuDescription] = useState("");
-  const [formDayOfWeek, setFormDayOfWeek] = useState<DayKey>("ALL");
   const [formIsActive, setFormIsActive] = useState(true);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -137,7 +128,7 @@ export default function DailyMealsPage() {
           const dash = normalizeOwnerDashboard(dashRes.data);
           hid = validHostelId(dash?.hostels?.[0]?.hostelId);
         } catch {
-          // ignore
+          // Ignore
         }
       }
       if (!cancelled) {
@@ -150,17 +141,16 @@ export default function DailyMealsPage() {
     };
   }, [user?.hostelId]);
 
-  // 2. Fetch Daily Meal Schedule for activeHostelId & day
-  const loadSchedule = useCallback(async (hid: string, day: DayKey = "ALL") => {
+  // 2. Fetch Daily Meal Schedule
+  const loadSchedule = useCallback(async (hid: string) => {
     setIsLoading(true);
     setLoadError(null);
     try {
-      const res = await hostelGhar.meals.getDaily(hid, day);
+      const res = await hostelGhar.meals.getDaily(hid);
       const data = unwrap<DailyMealSchedule>(res.data);
       if (data && Array.isArray(data.schedule) && data.schedule.length > 0) {
         const loaded = data.schedule.map((item, idx) => ({
           id: item.id,
-          dayOfWeek: item.dayOfWeek ?? day,
           mealName: item.mealName,
           mealNameEn: item.mealNameEn ?? null,
           time: item.time,
@@ -172,27 +162,19 @@ export default function DailyMealsPage() {
         }));
         setMeals(loaded);
         setOriginalMeals(loaded);
-        if (day === "ALL") {
-          setAllDaysFallbackMeals(loaded);
-        }
         setIsConfigured(Boolean(data.isConfigured));
         setLastUpdatedAt(data.lastUpdatedAt ?? null);
-        if (data.configuredDays) {
-          setConfiguredDays(data.configuredDays);
-        }
       } else {
-        const fallback = DEFAULT_MEAL_SLOTS.map((slot) => ({ ...slot, dayOfWeek: day }));
-        setMeals(fallback);
-        setOriginalMeals(fallback);
+        setMeals(DEFAULT_MEAL_SLOTS);
+        setOriginalMeals(DEFAULT_MEAL_SLOTS);
         setIsConfigured(false);
         setLastUpdatedAt(null);
       }
     } catch (err: unknown) {
       const apiErr = toApiError(err);
       if (apiErr.status === 404 || apiErr.message?.includes("not found")) {
-        const fallback = DEFAULT_MEAL_SLOTS.map((slot) => ({ ...slot, dayOfWeek: day }));
-        setMeals(fallback);
-        setOriginalMeals(fallback);
+        setMeals(DEFAULT_MEAL_SLOTS);
+        setOriginalMeals(DEFAULT_MEAL_SLOTS);
         setIsConfigured(false);
       } else {
         setLoadError(apiErr.message || "Failed to load meal schedule. Please refresh.");
@@ -204,39 +186,23 @@ export default function DailyMealsPage() {
 
   useEffect(() => {
     if (activeHostelId) {
-      loadSchedule(activeHostelId, selectedDay);
+      loadSchedule(activeHostelId);
+    } else {
+      setIsLoading(false);
     }
-  }, [activeHostelId, loadSchedule, selectedDay]);
+  }, [activeHostelId, loadSchedule]);
 
-  // Handle switching Day Tab
-  const handleSelectDay = (dayKey: DayKey) => {
-    setSelectedDay(dayKey);
-  };
-
-  // Check if current day has custom meals saved
-  const isCurrentDayCustomized = useMemo(() => {
-    if (selectedDay === "ALL") return configuredDays.includes("ALL");
-    return configuredDays.includes(selectedDay);
-  }, [configuredDays, selectedDay]);
-
-  // Check for unsaved changes
+  // Check if form has unsaved modifications
   const hasUnsavedChanges = useMemo(() => {
-    if (meals.length !== originalMeals.length) return true;
-    return meals.some((meal, idx) => {
-      const orig = originalMeals[idx];
-      if (!orig) return true;
-      return (
-        meal.mealName !== orig.mealName ||
-        meal.mealNameEn !== orig.mealNameEn ||
-        meal.time !== orig.time ||
-        meal.menuDescription !== orig.menuDescription ||
-        meal.isActive !== orig.isActive ||
-        meal.orderIndex !== orig.orderIndex
-      );
-    });
+    return JSON.stringify(meals) !== JSON.stringify(originalMeals);
   }, [meals, originalMeals]);
 
-  // Open Add Meal Modal
+  // Active meals count
+  const activeCount = useMemo(() => {
+    return meals.filter((m) => m.isActive).length;
+  }, [meals]);
+
+  // Open Modal for Add
   const handleOpenAddModal = () => {
     setEditingMeal(null);
     setEditingIndex(null);
@@ -244,13 +210,12 @@ export default function DailyMealsPage() {
     setFormMealNameEn("");
     setFormTime("");
     setFormMenuDescription("");
-    setFormDayOfWeek(selectedDay);
     setFormIsActive(true);
     setFormError(null);
     setEditModalOpen(true);
   };
 
-  // Open Edit Meal Modal
+  // Open Modal for Edit
   const handleOpenEditModal = (meal: DailyMealItem, index: number) => {
     setEditingMeal(meal);
     setEditingIndex(index);
@@ -258,51 +223,47 @@ export default function DailyMealsPage() {
     setFormMealNameEn(meal.mealNameEn ?? "");
     setFormTime(meal.time);
     setFormMenuDescription(meal.menuDescription ?? "");
-    setFormDayOfWeek((meal.dayOfWeek as DayKey) ?? selectedDay);
     setFormIsActive(meal.isActive);
     setFormError(null);
     setEditModalOpen(true);
   };
 
-  // Save Modal Form (Add or Edit)
-  const handleSaveModalForm = (e: React.FormEvent) => {
+  // Save Modal (Add or Edit)
+  const handleSaveModal = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formMealName.trim()) {
-      setFormError("खानाको प्रकार (Meal Name in Nepali) is required.");
+    setFormError(null);
+
+    const trimmedName = formMealName.trim();
+    const trimmedTime = formTime.trim();
+
+    if (!trimmedName) {
+      setFormError("Meal name is required.");
       return;
     }
-    if (!formTime.trim()) {
-      setFormError("समय (Serving Time) is required.");
+    if (!trimmedTime) {
+      setFormError("Serving time window is required.");
       return;
     }
 
-    if (editingIndex !== null && editingMeal) {
-      // Edit existing slot
+    const updatedItem: DailyMealItem = {
+      ...(editingMeal?.id ? { id: editingMeal.id } : {}),
+      mealName: trimmedName,
+      mealNameEn: formMealNameEn.trim() || null,
+      time: trimmedTime,
+      menuDescription: formMenuDescription.trim() || null,
+      isActive: formIsActive,
+      orderIndex:
+        editingMeal?.orderIndex ?? (editingIndex !== null ? editingIndex + 1 : meals.length + 1),
+    };
+
+    if (editingIndex !== null && editingIndex >= 0) {
       const next = [...meals];
-      next[editingIndex] = {
-        ...next[editingIndex],
-        mealName: formMealName.trim(),
-        mealNameEn: formMealNameEn.trim() || null,
-        time: formTime.trim(),
-        menuDescription: formMenuDescription.trim() || null,
-        dayOfWeek: formDayOfWeek,
-        isActive: formIsActive,
-      };
+      next[editingIndex] = updatedItem;
       setMeals(next);
-      success(`"${formMealName.trim()}" updated. Click "Save Schedule" to commit.`);
+      success("Meal updated locally. Click 'Save Schedule' to apply changes.");
     } else {
-      // Add new slot
-      const newMeal: DailyMealItem = {
-        mealName: formMealName.trim(),
-        mealNameEn: formMealNameEn.trim() || null,
-        time: formTime.trim(),
-        menuDescription: formMenuDescription.trim() || null,
-        dayOfWeek: formDayOfWeek,
-        isActive: formIsActive,
-        orderIndex: meals.length + 1,
-      };
-      setMeals([...meals, newMeal]);
-      success(`"${formMealName.trim()}" added. Click "Save Schedule" to commit.`);
+      setMeals([...meals, updatedItem]);
+      success("New meal slot added. Click 'Save Schedule' to apply changes.");
     }
 
     setEditModalOpen(false);
@@ -313,6 +274,26 @@ export default function DailyMealsPage() {
     const next = [...meals];
     next[index] = { ...next[index], isActive: !next[index].isActive };
     setMeals(next);
+  };
+
+  // Move Meal Up in Order
+  const handleMoveUp = (index: number) => {
+    if (index === 0) return;
+    const next = [...meals];
+    const temp = next[index - 1];
+    next[index - 1] = next[index];
+    next[index] = temp;
+    setMeals(next.map((m, idx) => ({ ...m, orderIndex: idx + 1 })));
+  };
+
+  // Move Meal Down in Order
+  const handleMoveDown = (index: number) => {
+    if (index === meals.length - 1) return;
+    const next = [...meals];
+    const temp = next[index + 1];
+    next[index + 1] = next[index];
+    next[index] = temp;
+    setMeals(next.map((m, idx) => ({ ...m, orderIndex: idx + 1 })));
   };
 
   // Delete Action
@@ -328,67 +309,10 @@ export default function DailyMealsPage() {
     setMeals(next);
     setDeleteModalOpen(false);
     setDeletingIndex(null);
-    success(`"${removedMeal.mealName}" removed. Remember to click Save Schedule.`);
+    success(`"${removedMeal.mealName}" removed. Remember to save changes.`);
   };
 
-  // Copy template from "All Days" to current selected day
-  const handleCopyFromAllDays = () => {
-    const base = allDaysFallbackMeals.length > 0 ? allDaysFallbackMeals : DEFAULT_MEAL_SLOTS;
-    const copied = base.map((slot, idx) => ({
-      ...slot,
-      id: undefined,
-      dayOfWeek: selectedDay,
-      orderIndex: idx + 1,
-    }));
-    setMeals(copied);
-    success(
-      `Copied standard meal slots to ${currentDayInfo?.labelNp} (${currentDayInfo?.labelEn}). Customize items and click "Save Schedule".`
-    );
-  };
-
-  // Open Copy-To-Other-Days Modal
-  const handleOpenCopyModal = () => {
-    const others = DAYS_OF_WEEK.filter((d) => d.key !== selectedDay).map((d) => d.key);
-    setTargetDaysToCopy([]);
-    setCopyModalOpen(true);
-  };
-
-  // Confirm Copy-To-Other-Days
-  const handleConfirmCopyToOtherDays = async () => {
-    if (!activeHostelId) return;
-    if (targetDaysToCopy.length === 0) {
-      toastError("Please select at least one day to copy the schedule to.");
-      return;
-    }
-
-    setIsSaving(true);
-    try {
-      for (const day of targetDaysToCopy) {
-        const payload: DailyMealItem[] = meals.map((m, idx) => ({
-          mealName: m.mealName.trim(),
-          mealNameEn: m.mealNameEn?.trim() || null,
-          time: m.time.trim(),
-          menuDescription: m.menuDescription?.trim() || null,
-          isActive: m.isActive,
-          orderIndex: idx + 1,
-          dayOfWeek: day,
-        }));
-        await hostelGhar.meals.saveDaily(activeHostelId, payload, day);
-      }
-
-      success(`Successfully copied schedule to ${targetDaysToCopy.length} day(s)!`);
-      setCopyModalOpen(false);
-      // Reload current schedule
-      await loadSchedule(activeHostelId, selectedDay);
-    } catch (err: unknown) {
-      const apiErr = toApiError(err);
-      toastError(apiErr.message || "Failed to copy schedule to selected days.");
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  // Persist Current Daily/Weekly Meals (PUT /hostels/:hostelId/meals/daily)
+  // Persist All Daily Meals (PUT /hostels/:hostelId/meals/daily)
   const handleSaveAll = async () => {
     if (!activeHostelId) {
       toastError("Hostel ID could not be identified.");
@@ -410,23 +334,17 @@ export default function DailyMealsPage() {
         menuDescription: m.menuDescription?.trim() || null,
         isActive: m.isActive,
         orderIndex: idx + 1,
-        dayOfWeek: selectedDay,
       }));
 
-      const res = await hostelGhar.meals.saveDaily(activeHostelId, payload, selectedDay);
+      const res = await hostelGhar.meals.saveDaily(activeHostelId, payload);
       const data = unwrap<DailyMealSchedule>(res.data);
-      success(
-        `${currentDayInfo?.labelNp} (${currentDayInfo?.labelEn}) meal schedule saved successfully.`
-      );
+      success("Daily meal schedule saved successfully.");
 
       if (data && Array.isArray(data.schedule) && data.schedule.length > 0) {
         setMeals(data.schedule);
         setOriginalMeals(data.schedule);
         setIsConfigured(true);
         setLastUpdatedAt(data.lastUpdatedAt ?? new Date().toISOString());
-        if (data.configuredDays) {
-          setConfiguredDays(data.configuredDays);
-        }
       } else {
         setOriginalMeals(meals);
         setIsConfigured(true);
@@ -440,20 +358,18 @@ export default function DailyMealsPage() {
     }
   };
 
-  // Reset Meals for Current Day or All
+  // Reset to Defaults
   const handleResetSchedule = async () => {
     if (!activeHostelId) return;
     setIsSaving(true);
     try {
-      await hostelGhar.meals.clearDaily(activeHostelId, selectedDay);
-      const fallback = DEFAULT_MEAL_SLOTS.map((s) => ({ ...s, dayOfWeek: selectedDay }));
-      setMeals(fallback);
-      setOriginalMeals(fallback);
+      await hostelGhar.meals.clearDaily(activeHostelId);
+      setMeals(DEFAULT_MEAL_SLOTS);
+      setOriginalMeals(DEFAULT_MEAL_SLOTS);
       setIsConfigured(false);
       setLastUpdatedAt(null);
-      setClearModalOpen(false);
-      success(`${currentDayInfo?.labelNp} meal schedule reset to default values.`);
-      await loadSchedule(activeHostelId, selectedDay);
+      setResetModalOpen(false);
+      success("Meal schedule reset to standard defaults.");
     } catch (err: unknown) {
       const apiErr = toApiError(err);
       toastError(apiErr.message || "Failed to reset meal schedule.");
@@ -462,42 +378,40 @@ export default function DailyMealsPage() {
     }
   };
 
-  const currentDayInfo = DAYS_OF_WEEK.find((d) => d.key === selectedDay);
-
   return (
     <Protected permission="VIEW_HOSTEL">
       <DashboardShell
-        title="दैनिक भोजन तालिका"
-        subtitle="होस्टेलको दैनिक खानाको तालिका, समय, हप्ताका दिनहरू (आइतबारदेखि शनिबार) र मेनु व्यवस्थापन गर्नुहोस्।"
+        title="Daily Meal Schedule"
+        subtitle="Configure daily meal slots, serving hours, menus, and resident visibility for your hostel."
       >
-        <div className="mx-auto max-w-6xl space-y-6 pb-16">
+        <div className="mx-auto max-w-6xl space-y-6 pb-20">
           {/* Header Bar */}
           <div className="flex flex-col justify-between gap-4 border-b border-neutral-200/80 pb-5 sm:flex-row sm:items-center">
             <div>
               <div className="mb-1 flex items-center gap-2">
-                <span className="bg-brand-lime/20 text-brand-black rounded-xl p-2">
-                  <Utensils size={20} className="text-brand-black" />
+                <span className="bg-brand-lime/20 text-brand-black shadow-xs rounded-xl p-2.5">
+                  <Utensils size={22} className="text-brand-black" />
                 </span>
-                <h1 className="text-2xl font-bold tracking-tight text-neutral-900">
-                  दैनिक भोजन तालिका
-                </h1>
-                <span className="text-sm font-semibold text-neutral-500">
-                  (Daily &amp; Weekly Meal Schedule)
-                </span>
-                {isConfigured ? (
-                  <Badge tone="green" className="ml-2">
-                    <CheckCircle2 size={12} className="mr-1" /> सक्रिय (Active)
-                  </Badge>
-                ) : (
-                  <Badge tone="gray" className="ml-2">
-                    पूर्वनिर्धारित (Defaults)
-                  </Badge>
-                )}
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h1 className="text-2xl font-bold tracking-tight text-neutral-900">
+                      Daily Meal Schedule
+                    </h1>
+                    {isConfigured ? (
+                      <Badge tone="green" className="ml-1 text-xs font-semibold">
+                        <CheckCircle2 size={12} className="mr-1" /> Published
+                      </Badge>
+                    ) : (
+                      <Badge tone="gray" className="ml-1 text-xs">
+                        Standard Defaults
+                      </Badge>
+                    )}
+                  </div>
+                  <p className="mt-0.5 text-xs text-neutral-500 sm:text-sm">
+                    Manage food timings, meal items, and availability for your hostel residents.
+                  </p>
+                </div>
               </div>
-              <p className="max-w-2xl text-sm text-neutral-500">
-                Manage daily meal slots, serving timings, weekly menus (Sunday to Saturday), and
-                availability for your hostel residents.
-              </p>
             </div>
 
             <div className="flex shrink-0 flex-wrap items-center gap-2">
@@ -506,29 +420,18 @@ export default function DailyMealsPage() {
                 size="sm"
                 onClick={() => setPreviewOpen(true)}
                 disabled={isLoading}
-                className="text-xs"
+                className="text-xs font-medium"
               >
-                <Eye size={14} className="mr-1" /> पूर्वावलोकन (Preview)
+                <Eye size={14} className="mr-1.5" /> Resident Preview
               </Button>
               <Button
                 variant="outline"
                 size="sm"
-                onClick={handleOpenCopyModal}
-                disabled={isLoading || meals.length === 0}
-                className="text-brand-black text-xs hover:bg-neutral-100"
-                title="Copy current day's menu to other days of the week"
-              >
-                <Copy size={13} className="mr-1 text-neutral-600" /> अन्य बारमा प्रतिलिपि (Copy to
-                Days)
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setClearModalOpen(true)}
+                onClick={() => setResetModalOpen(true)}
                 disabled={isLoading}
-                className="border-rose-200 text-xs text-rose-600 hover:bg-rose-50 hover:text-rose-700"
+                className="border-neutral-300 text-xs text-neutral-700 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600"
               >
-                <RotateCcw size={13} className="mr-1" /> रिसेट (Reset)
+                <RotateCcw size={13} className="mr-1.5" /> Reset Defaults
               </Button>
               <Button
                 variant="outline"
@@ -537,7 +440,7 @@ export default function DailyMealsPage() {
                 disabled={isLoading}
                 className="bg-brand-lime/10 border-brand-lime/40 text-brand-black hover:bg-brand-lime/20 text-xs font-semibold"
               >
-                <Plus size={14} className="mr-1" /> थप गर्नुहोस् (Add Meal)
+                <Plus size={14} className="mr-1.5" /> Add Meal Slot
               </Button>
               <Button
                 variant="primary"
@@ -545,128 +448,98 @@ export default function DailyMealsPage() {
                 onClick={handleSaveAll}
                 loading={isSaving}
                 disabled={isLoading}
-                className="bg-brand-lime text-brand-black hover:bg-brand-lime/90 shadow-xs px-3.5 text-xs font-semibold"
+                className="bg-brand-lime text-brand-black hover:bg-brand-lime/90 shadow-xs px-4 text-xs font-semibold"
               >
-                <Save size={14} className="mr-1.5" /> तालिका सुरक्षित गर्नुहोस् (Save Schedule)
+                <Save size={14} className="mr-1.5" /> Save Schedule
               </Button>
             </div>
           </div>
 
-          {/* WEEKLY DAY SELECTOR BAR */}
-          <div className="shadow-xs rounded-2xl border border-neutral-200/90 bg-white p-4">
-            <div className="mb-3 flex flex-col justify-between gap-2 border-b border-neutral-100 pb-3 sm:flex-row sm:items-center">
-              <div>
-                <div className="flex items-center gap-2">
-                  <Calendar size={18} className="text-neutral-700" />
-                  <span className="text-sm font-bold text-neutral-900">
-                    हप्ताको बार छनोट गर्नुहोस् (Select Day of Week)
-                  </span>
-                </div>
-                <p className="text-xs text-neutral-500">
-                  हप्ताको प्रत्येक दिन (आइतबार, सोमबार...) को लागि छुट्टाछुट्टै मेनु वा सबै दिनको
-                  लागि सामान्य तालिका व्यवस्थापन गर्नुहोस्।
-                </p>
-              </div>
-
-              {selectedDay !== "ALL" && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleCopyFromAllDays}
-                  className="bg-neutral-50 text-xs font-medium text-neutral-700 hover:bg-neutral-100"
-                >
-                  <Sparkles size={13} className="mr-1.5 text-amber-500" />
-                  सबै दिनको तालिकाबाट प्रतिलिपि (Copy from All Days)
-                </Button>
-              )}
-            </div>
-
-            {/* Day of Week Selector Pills */}
-            <div className="scrollbar-thin flex items-center gap-2 overflow-x-auto pb-1">
-              {DAYS_OF_WEEK.map((d) => {
-                const isSelected = selectedDay === d.key;
-                const isConfiguredDay = configuredDays.includes(d.key);
-                return (
-                  <button
-                    key={d.key}
-                    type="button"
-                    onClick={() => handleSelectDay(d.key)}
-                    className={`group relative flex shrink-0 cursor-pointer flex-col items-center rounded-xl px-3.5 py-2 text-xs font-medium transition-all ${
-                      isSelected
-                        ? "bg-neutral-900 text-white shadow-md ring-2 ring-neutral-900/10"
-                        : "bg-neutral-100/80 text-neutral-700 hover:bg-neutral-200/80 hover:text-neutral-900"
-                    }`}
-                  >
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-sm font-bold">{d.labelNp}</span>
-                      {isConfiguredDay && (
-                        <span
-                          className={`h-2 w-2 rounded-full ${
-                            isSelected ? "bg-brand-lime" : "bg-emerald-500"
-                          }`}
-                          title="कन्फिगर गरिएको मेनु (Custom Menu Configured)"
-                        />
-                      )}
-                    </div>
-                    <span
-                      className={`text-[10px] ${
-                        isSelected ? "text-neutral-300" : "text-neutral-500"
-                      }`}
-                    >
-                      {d.labelEn}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Current Day Status Banner */}
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-neutral-200/80 bg-neutral-50/90 px-4 py-2.5 text-xs text-neutral-700">
-            <div className="flex items-center gap-2">
-              <span className="font-bold text-neutral-900">
-                वर्तमान दृश्य: {currentDayInfo?.labelNp} ({currentDayInfo?.labelEn})
-              </span>
-              {isCurrentDayCustomized ? (
-                <Badge tone="green" className="text-[11px]">
-                  विशेष मेनु कन्फिगर गरिएको (Customized)
-                </Badge>
-              ) : selectedDay !== "ALL" ? (
-                <Badge tone="amber" className="text-[11px]">
-                  सामान्य तालिका लागु छ (Inherited from All Days)
-                </Badge>
-              ) : null}
-            </div>
-            {lastUpdatedAt && (
-              <span className="text-neutral-500">
-                अन्तिम पटक अद्यावधिक:{" "}
-                <strong className="text-neutral-700">
-                  {new Date(lastUpdatedAt).toLocaleString("en-US", {
-                    dateStyle: "medium",
-                    timeStyle: "short",
-                  })}
-                </strong>
-              </span>
-            )}
-          </div>
-
-          {/* Unsaved changes banner */}
-          {hasUnsavedChanges && (
-            <div className="shadow-xs animate-in fade-in flex items-center justify-between gap-3 rounded-xl border border-amber-200/80 bg-amber-50 p-3.5 text-sm text-amber-900 duration-200">
-              <div className="flex items-center gap-2">
-                <AlertCircle size={16} className="shrink-0 text-amber-600" />
-                <span className="text-xs font-medium sm:text-sm">
-                  तपाईंले तालिकामा परिवर्तन गर्नुभएको छ। डाटाबेस र मोबाइलमा लागु गर्न &quot;तालिका
-                  सुरक्षित गर्नुहोस्&quot; मा क्लिक गर्नुहोस्।
+          {/* Quick Metrics Cards */}
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
+            <Card className="shadow-xs border-neutral-200/80 p-4">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-neutral-500">Total Slots</span>
+                <span className="rounded-lg bg-neutral-100 p-1.5 text-neutral-600">
+                  <Utensils size={14} />
                 </span>
+              </div>
+              <p className="mt-2 text-2xl font-bold text-neutral-900">{meals.length}</p>
+              <p className="mt-0.5 text-[11px] text-neutral-500">Configured meal slots</p>
+            </Card>
+
+            <Card className="shadow-xs border-neutral-200/80 p-4">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-neutral-500">Active Slots</span>
+                <span className="rounded-lg bg-emerald-50 p-1.5 text-emerald-600">
+                  <Check size={14} />
+                </span>
+              </div>
+              <p className="mt-2 text-2xl font-bold text-emerald-700">{activeCount}</p>
+              <p className="mt-0.5 text-[11px] text-neutral-500">Visible to residents</p>
+            </Card>
+
+            <Card className="shadow-xs border-neutral-200/80 p-4">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-neutral-500">Schedule Status</span>
+                <span className="rounded-lg bg-blue-50 p-1.5 text-blue-600">
+                  <Sparkles size={14} />
+                </span>
+              </div>
+              <p className="mt-2 text-base font-bold text-neutral-900">
+                {isConfigured ? "Published Live" : "Draft / Defaults"}
+              </p>
+              <p className="mt-0.5 text-[11px] text-neutral-500">
+                {isConfigured ? "Syncs with resident app" : "Click Save to publish"}
+              </p>
+            </Card>
+
+            <Card className="shadow-xs border-neutral-200/80 p-4">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-neutral-500">Last Synced</span>
+                <span className="rounded-lg bg-amber-50 p-1.5 text-amber-600">
+                  <Clock size={14} />
+                </span>
+              </div>
+              <p className="mt-2 text-sm font-bold text-neutral-900">
+                {lastUpdatedAt
+                  ? new Date(lastUpdatedAt).toLocaleDateString("en-US", {
+                      month: "short",
+                      day: "numeric",
+                    })
+                  : "Never"}
+              </p>
+              <p className="mt-0.5 text-[11px] text-neutral-500">
+                {lastUpdatedAt
+                  ? new Date(lastUpdatedAt).toLocaleTimeString("en-US", {
+                      hour: "numeric",
+                      minute: "2-digit",
+                    })
+                  : "Using initial setup"}
+              </p>
+            </Card>
+          </div>
+
+          {/* Unsaved changes notification banner */}
+          {hasUnsavedChanges && (
+            <div className="shadow-xs animate-in fade-in flex items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50/90 p-4 text-amber-900 duration-200">
+              <div className="flex items-center gap-3">
+                <AlertCircle size={18} className="shrink-0 text-amber-600" />
+                <div>
+                  <p className="text-xs font-semibold sm:text-sm">You have unsaved changes</p>
+                  <p className="text-[11px] text-amber-700 sm:text-xs">
+                    Remember to click &quot;Save Schedule&quot; so residents can see the updated
+                    meal timings.
+                  </p>
+                </div>
               </div>
               <Button
                 size="sm"
                 onClick={handleSaveAll}
                 loading={isSaving}
-                className="shrink-0 bg-amber-600 px-3 py-1 text-xs font-medium text-white hover:bg-amber-700"
+                className="shrink-0 bg-neutral-900 px-4 py-1.5 text-xs font-semibold text-white hover:bg-neutral-800"
               >
-                अहिले सुरक्षित गर्नुहोस् (Save Now)
+                Save Schedule
               </Button>
             </div>
           )}
@@ -678,45 +551,61 @@ export default function DailyMealsPage() {
             <ErrorState
               title="Failed to load meal schedule"
               description={loadError}
-              onRetry={() => activeHostelId && loadSchedule(activeHostelId, selectedDay)}
+              onRetry={() => activeHostelId && loadSchedule(activeHostelId)}
             />
           ) : meals.length === 0 ? (
             <EmptyState
-              title="यस बारको लागि कुनै मेनु फेला परेन"
-              description="नयाँ खानाको प्रकार र समय तालिका थप्न वा सबै दिनको तालिका प्रतिलिपि गर्न तलको बटन प्रयोग गर्नुहोस्।"
+              title="No meal slots configured"
+              description="Add your first daily meal slot to set up the breakfast, lunch, or dinner timetable."
               action={
-                <div className="flex gap-2">
-                  <Button variant="outline" onClick={handleCopyFromAllDays}>
-                    सबै दिनको मेनु प्रतिलिपि
-                  </Button>
-                  <Button onClick={handleOpenAddModal}>थप गर्नुहोस् (Add Meal)</Button>
-                </div>
+                <Button onClick={handleOpenAddModal} className="bg-brand-lime text-brand-black">
+                  Add Meal Slot
+                </Button>
               }
             />
           ) : (
             <Card className="shadow-xs overflow-hidden border border-neutral-200/80 bg-white">
-              {/* Desktop / Tablet Redesigned Meal Table */}
-              <div className="hidden overflow-x-auto sm:block">
+              {/* Header inside table card */}
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-neutral-200/80 bg-neutral-50/60 px-5 py-3.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-neutral-800">
+                    Daily Timetable ({meals.length} Meals)
+                  </span>
+                  <span className="text-[11px] text-neutral-500">
+                    — Use arrow buttons to reorder slots chronologically
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 text-xs text-neutral-500">
+                  <span className="inline-block h-2 w-2 rounded-full bg-emerald-500"></span>
+                  <span>{activeCount} Active</span>
+                  <span className="text-neutral-300">|</span>
+                  <span className="inline-block h-2 w-2 rounded-full bg-neutral-300"></span>
+                  <span>{meals.length - activeCount} Inactive</span>
+                </div>
+              </div>
+
+              {/* Desktop / Tablet Meal Table */}
+              <div className="hidden overflow-x-auto md:block">
                 <table className="w-full text-left text-sm text-neutral-700">
-                  <thead className="border-b border-neutral-200 bg-neutral-50/80 text-xs font-semibold text-neutral-800">
+                  <thead className="border-b border-neutral-200 bg-neutral-50 text-xs font-semibold text-neutral-700">
                     <tr>
-                      <th scope="col" className="w-16 px-4 py-3.5 text-center font-bold">
-                        क्र.सं. (S.N.)
+                      <th scope="col" className="w-16 px-4 py-3 text-center font-bold">
+                        Order
                       </th>
-                      <th scope="col" className="px-5 py-3.5 font-bold">
-                        खानाको प्रकार (Meal Slot)
+                      <th scope="col" className="px-5 py-3 font-bold">
+                        Meal Slot
                       </th>
-                      <th scope="col" className="w-48 px-4 py-3.5 font-bold">
-                        समय (Serving Time)
+                      <th scope="col" className="w-48 px-4 py-3 font-bold">
+                        Serving Window
                       </th>
-                      <th scope="col" className="px-5 py-3.5 font-bold">
-                        मेनु / परिकार विवरण (Menu Items)
+                      <th scope="col" className="px-5 py-3 font-bold">
+                        Menu Description
                       </th>
-                      <th scope="col" className="w-28 px-4 py-3.5 text-center font-bold">
-                        अवस्था (Status)
+                      <th scope="col" className="w-28 px-4 py-3 text-center font-bold">
+                        Status
                       </th>
-                      <th scope="col" className="w-32 px-4 py-3.5 text-right font-bold">
-                        कार्य (Actions)
+                      <th scope="col" className="w-36 px-4 py-3 text-right font-bold">
+                        Actions
                       </th>
                     </tr>
                   </thead>
@@ -725,16 +614,40 @@ export default function DailyMealsPage() {
                       <tr
                         key={meal.id ?? `meal-${index}`}
                         className={`transition-colors hover:bg-neutral-50/70 ${
-                          !meal.isActive ? "bg-neutral-50/40 opacity-75" : ""
+                          !meal.isActive ? "bg-neutral-50/40 opacity-70" : ""
                         }`}
                       >
-                        {/* 1. S.N. */}
-                        <td className="px-4 py-4 text-center font-mono text-xs font-bold text-neutral-500">
-                          {index + 1}
+                        {/* 1. Order & Reorder arrows */}
+                        <td className="px-4 py-3.5 text-center">
+                          <div className="flex items-center justify-center gap-1">
+                            <span className="w-4 text-center font-mono text-xs font-bold text-neutral-500">
+                              {index + 1}
+                            </span>
+                            <div className="flex flex-col">
+                              <button
+                                type="button"
+                                disabled={index === 0}
+                                onClick={() => handleMoveUp(index)}
+                                title="Move Up"
+                                className="cursor-pointer rounded p-0.5 text-neutral-400 hover:bg-neutral-200 hover:text-neutral-800 disabled:cursor-not-allowed disabled:opacity-20"
+                              >
+                                <ArrowUp size={11} />
+                              </button>
+                              <button
+                                type="button"
+                                disabled={index === meals.length - 1}
+                                onClick={() => handleMoveDown(index)}
+                                title="Move Down"
+                                className="cursor-pointer rounded p-0.5 text-neutral-400 hover:bg-neutral-200 hover:text-neutral-800 disabled:cursor-not-allowed disabled:opacity-20"
+                              >
+                                <ArrowDown size={11} />
+                              </button>
+                            </div>
+                          </div>
                         </td>
 
-                        {/* 2. Meal Slot */}
-                        <td className="px-5 py-4">
+                        {/* 2. Meal Slot Name & Subtitle */}
+                        <td className="px-5 py-3.5">
                           <div className="font-semibold text-neutral-900">{meal.mealName}</div>
                           {meal.mealNameEn && (
                             <div className="text-xs text-neutral-500">{meal.mealNameEn}</div>
@@ -742,67 +655,67 @@ export default function DailyMealsPage() {
                         </td>
 
                         {/* 3. Serving Time */}
-                        <td className="px-4 py-4">
-                          <div className="inline-flex items-center gap-1.5 rounded-lg border border-neutral-200/70 bg-neutral-100/70 px-2.5 py-1 text-xs font-medium text-neutral-800">
+                        <td className="px-4 py-3.5">
+                          <div className="inline-flex items-center gap-1.5 rounded-lg border border-neutral-200/80 bg-neutral-100/80 px-2.5 py-1 text-xs font-semibold text-neutral-800">
                             <Clock size={12} className="shrink-0 text-neutral-500" />
                             <span>{meal.time}</span>
                           </div>
                         </td>
 
-                        {/* 4. Menu Items */}
-                        <td className="px-5 py-4">
+                        {/* 4. Menu Description */}
+                        <td className="px-5 py-3.5">
                           {meal.menuDescription ? (
                             <p className="line-clamp-2 text-xs leading-relaxed text-neutral-700">
                               {meal.menuDescription}
                             </p>
                           ) : (
                             <span className="text-xs italic text-neutral-400">
-                              कुनै मेनु विवरण राखिएको छैन (No menu items)
+                              No menu details added
                             </span>
                           )}
                         </td>
 
-                        {/* 5. Status */}
-                        <td className="px-4 py-4 text-center">
+                        {/* 5. Status Toggle */}
+                        <td className="px-4 py-3.5 text-center">
                           <button
                             type="button"
                             onClick={() => handleToggleActive(index)}
                             className="cursor-pointer transition-transform hover:scale-105"
-                            title="अवस्था परिवर्तन गर्न क्लिक गर्नुहोस्"
+                            title="Click to toggle status"
                           >
                             {meal.isActive ? (
-                              <Badge tone="green" className="text-xs">
-                                सक्रिय (Active)
+                              <Badge tone="green" className="text-xs font-medium">
+                                Active
                               </Badge>
                             ) : (
-                              <Badge tone="gray" className="text-xs">
-                                निष्क्रिय (Inactive)
+                              <Badge tone="gray" className="text-xs font-medium">
+                                Inactive
                               </Badge>
                             )}
                           </button>
                         </td>
 
                         {/* 6. Actions */}
-                        <td className="px-4 py-4 text-right">
+                        <td className="px-4 py-3.5 text-right">
                           <div className="flex items-center justify-end gap-1.5">
                             <Button
-                              variant="outline"
+                              variant="ghost"
                               size="sm"
                               onClick={() => handleOpenEditModal(meal, index)}
-                              className="h-8 w-8 p-0 text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900"
-                              title="सम्पादन गर्नुहोस् (Edit Meal)"
+                              className="h-8 w-8 p-0 text-neutral-600 hover:bg-neutral-200/60 hover:text-neutral-900"
+                              title="Edit meal slot"
                             >
                               <Edit2 size={13} />
                             </Button>
                             <Button
-                              variant="outline"
+                              variant="ghost"
                               size="sm"
                               onClick={() => {
                                 setDeletingIndex(index);
                                 setDeleteModalOpen(true);
                               }}
-                              className="h-8 w-8 p-0 text-rose-600 hover:bg-rose-50 hover:text-rose-700"
-                              title="हटाउनुहोस् (Delete Meal)"
+                              className="h-8 w-8 p-0 text-neutral-400 hover:bg-rose-50 hover:text-rose-600"
+                              title="Delete meal slot"
                             >
                               <Trash2 size={13} />
                             </Button>
@@ -814,76 +727,95 @@ export default function DailyMealsPage() {
                 </table>
               </div>
 
-              {/* Mobile View: Clean Card Layout */}
-              <div className="divide-y divide-neutral-200/70 sm:hidden">
+              {/* Mobile Friendly Card Layout */}
+              <div className="divide-y divide-neutral-200/80 md:hidden">
                 {meals.map((meal, index) => (
                   <div
                     key={meal.id ?? `mobile-meal-${index}`}
-                    className={`space-y-3 p-4 transition-colors ${
-                      !meal.isActive ? "bg-neutral-50/50 opacity-80" : ""
-                    }`}
+                    className={`space-y-3 p-4 ${!meal.isActive ? "bg-neutral-50/60 opacity-80" : ""}`}
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex items-center gap-2">
-                        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-neutral-100 text-xs font-bold text-neutral-600">
+                        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-neutral-100 font-mono text-xs font-bold text-neutral-600">
                           {index + 1}
                         </span>
                         <div>
-                          <h3 className="text-sm font-bold text-neutral-900">{meal.mealName}</h3>
+                          <h3 className="font-bold text-neutral-900">{meal.mealName}</h3>
                           {meal.mealNameEn && (
                             <p className="text-xs text-neutral-500">{meal.mealNameEn}</p>
                           )}
                         </div>
                       </div>
-
                       <button
                         type="button"
                         onClick={() => handleToggleActive(index)}
-                        className="cursor-pointer"
+                        className="shrink-0 cursor-pointer"
                       >
                         {meal.isActive ? (
-                          <Badge tone="green" className="text-xs">
-                            सक्रिय
+                          <Badge tone="green" className="text-[11px]">
+                            Active
                           </Badge>
                         ) : (
-                          <Badge tone="gray" className="text-xs">
-                            निष्क्रिय
+                          <Badge tone="gray" className="text-[11px]">
+                            Inactive
                           </Badge>
                         )}
                       </button>
                     </div>
 
-                    <div className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-1 text-xs font-medium text-neutral-700">
-                      <Clock size={12} className="text-neutral-500" />
-                      <span>{meal.time}</span>
+                    <div className="flex w-fit items-center gap-1.5 rounded-md bg-neutral-100/70 px-2.5 py-1 text-xs text-neutral-700">
+                      <Clock size={12} className="shrink-0 text-neutral-500" />
+                      <span className="font-semibold">{meal.time}</span>
                     </div>
 
-                    {meal.menuDescription && (
-                      <p className="rounded-lg bg-neutral-50 p-2.5 text-xs text-neutral-600">
-                        {meal.menuDescription}
-                      </p>
-                    )}
+                    <div className="rounded-lg border border-neutral-200/50 bg-neutral-50 p-2.5 text-xs leading-relaxed text-neutral-700">
+                      {meal.menuDescription || (
+                        <span className="italic text-neutral-400">No menu items added</span>
+                      )}
+                    </div>
 
-                    <div className="flex items-center justify-end gap-2 border-t border-neutral-100 pt-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleOpenEditModal(meal, index)}
-                        className="text-xs text-neutral-700"
-                      >
-                        <Edit2 size={12} className="mr-1" /> सम्पादन
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setDeletingIndex(index);
-                          setDeleteModalOpen(true);
-                        }}
-                        className="text-xs text-rose-600 hover:bg-rose-50"
-                      >
-                        <Trash2 size={12} className="mr-1" /> हटाउनुहोस्
-                      </Button>
+                    <div className="flex items-center justify-between gap-2 border-t border-neutral-100 pt-1">
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={index === 0}
+                          onClick={() => handleMoveUp(index)}
+                          className="h-7 px-2 text-xs text-neutral-600"
+                        >
+                          <ArrowUp size={12} className="mr-1" /> Up
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={index === meals.length - 1}
+                          onClick={() => handleMoveDown(index)}
+                          className="h-7 px-2 text-xs text-neutral-600"
+                        >
+                          <ArrowDown size={12} className="mr-1" /> Down
+                        </Button>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleOpenEditModal(meal, index)}
+                          className="h-7 text-xs"
+                        >
+                          <Edit2 size={12} className="mr-1" /> Edit
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setDeletingIndex(index);
+                            setDeleteModalOpen(true);
+                          }}
+                          className="h-7 border-rose-200 text-xs text-rose-600 hover:bg-rose-50"
+                        >
+                          <Trash2 size={12} />
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -896,104 +828,105 @@ export default function DailyMealsPage() {
         <Modal
           open={editModalOpen}
           onClose={() => setEditModalOpen(false)}
-          title={
-            editingIndex !== null
-              ? "खानाको प्रकार सम्पादन गर्नुहोस् (Edit Meal Slot)"
-              : "नयाँ खानाको प्रकार थप्नुहोस् (Add Meal Slot)"
-          }
+          title={editingIndex !== null ? "Edit Meal Slot" : "Add Meal Slot"}
+          description="Define the meal name, serving time window, menu items, and visibility status."
         >
-          <form onSubmit={handleSaveModalForm} className="space-y-4">
+          <form onSubmit={handleSaveModal} className="space-y-4 pt-1">
             {formError && (
-              <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">
+              <div className="rounded-lg bg-rose-50 p-3 text-xs font-medium text-rose-700">
                 {formError}
               </div>
             )}
 
-            {/* Day Selector in Modal */}
             <div>
-              <label className="mb-1 block text-xs font-semibold text-neutral-700">
-                कुन बारको लागि? (Day of Week)
-              </label>
-              <select
-                value={formDayOfWeek}
-                onChange={(e) => setFormDayOfWeek(e.target.value as DayKey)}
-                className="shadow-xs focus:outline-hidden w-full rounded-xl border border-neutral-300 bg-white px-3 py-2 text-xs text-neutral-800 focus:border-neutral-900"
-              >
-                {DAYS_OF_WEEK.map((d) => (
-                  <option key={d.key} value={d.key}>
-                    {d.labelNp} — {d.labelEn}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Meal Name (Nepali) */}
-            <div>
-              <label className="mb-1 block text-xs font-semibold text-neutral-700">
-                खानाको नाम / प्रकार (Nepali Name) <span className="text-rose-500">*</span>
+              <label className="mb-1 block text-xs font-semibold text-neutral-800">
+                Meal Name <span className="text-rose-600">*</span>
               </label>
               <Input
-                placeholder="जस्तै: बिहानको खाजा, दिउँसोको खाना..."
                 value={formMealName}
                 onChange={(e) => setFormMealName(e.target.value)}
+                placeholder="e.g. Morning Breakfast, Lunch, Dinner"
                 required
               />
             </div>
 
-            {/* Meal Name (English Translation) */}
             <div>
-              <label className="mb-1 block text-xs font-semibold text-neutral-700">
-                English Subtitle (वैकल्पिक)
+              <label className="mb-1 block text-xs font-semibold text-neutral-800">
+                Subtitle / Alternate Name{" "}
+                <span className="font-normal text-neutral-500">(Optional)</span>
               </label>
               <Input
-                placeholder="e.g. Morning Khaja, Lunch / Khana..."
                 value={formMealNameEn}
                 onChange={(e) => setFormMealNameEn(e.target.value)}
+                placeholder="e.g. Light Snack, Evening Khaja, Khana"
               />
             </div>
 
-            {/* Serving Time */}
             <div>
-              <label className="mb-1 block text-xs font-semibold text-neutral-700">
-                पस्कने समय (Serving Time) <span className="text-rose-500">*</span>
-              </label>
+              <div className="mb-1 flex items-center justify-between">
+                <label className="text-xs font-semibold text-neutral-800">
+                  Serving Time Window <span className="text-rose-600">*</span>
+                </label>
+                <span className="text-[11px] text-neutral-400">e.g. Start – End Time</span>
+              </div>
               <Input
-                placeholder="जस्तै: 10:00 AM–11:00 AM, 12:00 PM–1:00 PM"
                 value={formTime}
                 onChange={(e) => setFormTime(e.target.value)}
+                placeholder="e.g. 7:00 AM – 8:30 AM or 12:00 PM – 1:30 PM"
                 required
               />
+
+              {/* Quick Preset Chips */}
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                <span className="mr-1 self-center text-[11px] text-neutral-400">Presets:</span>
+                {QUICK_TIME_PRESETS.map((p) => (
+                  <button
+                    key={p.label}
+                    type="button"
+                    onClick={() => {
+                      setFormTime(p.time);
+                      if (!formMealName) setFormMealName(p.label);
+                    }}
+                    className="cursor-pointer rounded-md border border-neutral-200 bg-neutral-50 px-2 py-0.5 text-[11px] text-neutral-600 hover:border-neutral-300 hover:bg-neutral-100"
+                  >
+                    {p.time}
+                  </button>
+                ))}
+              </div>
             </div>
 
-            {/* Menu Description */}
             <div>
-              <label className="mb-1 block text-xs font-semibold text-neutral-700">
-                मेनु तथा परिकारहरू (Menu Items / Food Description)
+              <label className="mb-1 block text-xs font-semibold text-neutral-800">
+                Menu Items &amp; Description
               </label>
               <textarea
                 rows={3}
-                placeholder="जस्तै: दाल, भात, तरकारी, चिकन करी, सलाद, अचार..."
                 value={formMenuDescription}
                 onChange={(e) => setFormMenuDescription(e.target.value)}
-                className="shadow-xs focus:outline-hidden w-full rounded-xl border border-neutral-300 p-2.5 text-xs text-neutral-800 focus:border-neutral-900"
+                placeholder="e.g. Steamed Rice, Yellow Dal, Chicken or Paneer Curry, Seasonal Salad, Pickle..."
+                className="focus:border-brand-black focus:ring-brand-black w-full rounded-xl border border-neutral-300 p-3 text-sm focus:outline-none focus:ring-1"
               />
+              <p className="mt-1 text-[11px] text-neutral-500">
+                Residents will see this description when viewing the mess schedule.
+              </p>
             </div>
 
-            {/* Active Toggle */}
-            <div className="flex items-center gap-2 pt-1">
+            <div className="flex items-center gap-3 pt-1">
               <input
                 type="checkbox"
-                id="modalFormIsActive"
+                id="form-is-active"
                 checked={formIsActive}
                 onChange={(e) => setFormIsActive(e.target.checked)}
-                className="h-4 w-4 rounded-sm border-neutral-300 text-neutral-900 focus:ring-neutral-900"
+                className="text-brand-black focus:ring-brand-black h-4 w-4 rounded border-neutral-300"
               />
-              <label htmlFor="modalFormIsActive" className="text-xs font-medium text-neutral-700">
-                यो खाना तालिका सक्रिय राख्नुहोस् (Active)
+              <label
+                htmlFor="form-is-active"
+                className="cursor-pointer text-xs font-medium text-neutral-800"
+              >
+                Set as Active (Visible to residents on dashboard and facilities)
               </label>
             </div>
 
-            {/* Modal Actions */}
             <div className="flex justify-end gap-2 border-t border-neutral-100 pt-3">
               <Button
                 type="button"
@@ -1001,7 +934,7 @@ export default function DailyMealsPage() {
                 size="sm"
                 onClick={() => setEditModalOpen(false)}
               >
-                रद्द गर्नुहोस् (Cancel)
+                Cancel
               </Button>
               <Button
                 type="submit"
@@ -1009,115 +942,33 @@ export default function DailyMealsPage() {
                 size="sm"
                 className="bg-brand-lime text-brand-black hover:bg-brand-lime/90 font-semibold"
               >
-                {editingIndex !== null ? "अपडेट गर्नुहोस्" : "थप गर्नुहोस्"}
+                {editingIndex !== null ? "Update Slot" : "Add Slot"}
               </Button>
             </div>
           </form>
-        </Modal>
-
-        {/* Modal: Copy to Other Days */}
-        <Modal
-          open={copyModalOpen}
-          onClose={() => setCopyModalOpen(false)}
-          title="अन्य बारमा तालिका प्रतिलिपि गर्नुहोस् (Copy Schedule to Other Days)"
-        >
-          <div className="space-y-4">
-            <p className="text-xs text-neutral-600">
-              हालको{" "}
-              <strong>
-                {currentDayInfo?.labelNp} ({currentDayInfo?.labelEn})
-              </strong>{" "}
-              को मेनु र समय तालिका निम्न कुन कुन बारमा लागु गर्न चाहनुहुन्छ? छनोट गर्नुहोस्:
-            </p>
-
-            <div className="grid grid-cols-2 gap-2 rounded-xl border border-neutral-200 bg-neutral-50 p-3">
-              {DAYS_OF_WEEK.filter((d) => d.key !== selectedDay).map((d) => {
-                const checked = targetDaysToCopy.includes(d.key);
-                return (
-                  <label
-                    key={d.key}
-                    className={`flex cursor-pointer items-center gap-2 rounded-lg p-2 text-xs font-medium transition-colors ${
-                      checked
-                        ? "bg-brand-lime/20 text-neutral-900"
-                        : "text-neutral-700 hover:bg-neutral-100"
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          setTargetDaysToCopy([...targetDaysToCopy, d.key]);
-                        } else {
-                          setTargetDaysToCopy(targetDaysToCopy.filter((k) => k !== d.key));
-                        }
-                      }}
-                      className="rounded text-neutral-900"
-                    />
-                    <span>
-                      {d.labelNp}{" "}
-                      <span className="text-[10px] text-neutral-500">({d.shortEn})</span>
-                    </span>
-                  </label>
-                );
-              })}
-            </div>
-
-            <div className="flex items-center justify-between pt-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() =>
-                  setTargetDaysToCopy(
-                    DAYS_OF_WEEK.filter((d) => d.key !== selectedDay).map((d) => d.key)
-                  )
-                }
-                className="text-[11px]"
-              >
-                सबै छनोट गर्नुहोस् (Select All)
-              </Button>
-
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={() => setCopyModalOpen(false)}>
-                  रद्द गर्नुहोस्
-                </Button>
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={handleConfirmCopyToOtherDays}
-                  loading={isSaving}
-                  disabled={targetDaysToCopy.length === 0}
-                  className="bg-brand-lime text-brand-black hover:bg-brand-lime/90 text-xs font-semibold"
-                >
-                  <Copy size={13} className="mr-1" /> प्रतिलिपि गर्नुहोस् ({targetDaysToCopy.length}
-                  )
-                </Button>
-              </div>
-            </div>
-          </div>
         </Modal>
 
         {/* Modal: Delete Confirmation */}
         <Modal
           open={deleteModalOpen}
           onClose={() => setDeleteModalOpen(false)}
-          title="खानाको प्रकार हटाउने निश्चित गर्नुहोस्"
+          title="Delete Meal Slot"
         >
           <div className="space-y-4">
             <p className="text-sm text-neutral-600">
               {deletingIndex !== null && meals[deletingIndex] ? (
                 <>
-                  के तपाईं निश्चित हुनुहुन्छ कि तालिकाबाट{" "}
-                  <strong>&quot;{meals[deletingIndex].mealName}&quot;</strong> हटाउन चाहनुहुन्छ?
+                  Are you sure you want to remove{" "}
+                  <strong>&quot;{meals[deletingIndex].mealName}&quot;</strong> from the daily
+                  timetable?
                 </>
               ) : (
-                "के तपाईं यो खाना हटाउन चाहनुहुन्छ?"
+                "Are you sure you want to remove this meal slot?"
               )}
             </p>
             <div className="flex justify-end gap-2 pt-2">
               <Button variant="outline" size="sm" onClick={() => setDeleteModalOpen(false)}>
-                रद्द गर्नुहोस्
+                Cancel
               </Button>
               <Button
                 variant="primary"
@@ -1125,7 +976,7 @@ export default function DailyMealsPage() {
                 onClick={handleConfirmDelete}
                 className="bg-rose-600 text-xs font-semibold text-white hover:bg-rose-700"
               >
-                हटाउनुहोस् (Delete)
+                Delete Meal Slot
               </Button>
             </div>
           </div>
@@ -1133,21 +984,18 @@ export default function DailyMealsPage() {
 
         {/* Modal: Reset Confirmation */}
         <Modal
-          open={clearModalOpen}
-          onClose={() => setClearModalOpen(false)}
-          title="पूर्वनिर्धारित तालिकामा रिसेट गर्ने?"
+          open={resetModalOpen}
+          onClose={() => setResetModalOpen(false)}
+          title="Reset to Standard Defaults?"
         >
           <div className="space-y-4">
             <p className="text-sm text-neutral-600">
-              यसले वर्तमान{" "}
-              <strong>
-                {currentDayInfo?.labelNp} ({currentDayInfo?.labelEn})
-              </strong>{" "}
-              को तालिकालाई मानक पूर्वनिर्धारित मानहरूमा रिसेट गर्नेछ।
+              This will reset all meal slots back to the 5 standard daily meals (Breakfast, Morning
+              Snack, Lunch, Afternoon Snack, Dinner).
             </p>
             <div className="flex justify-end gap-2 pt-2">
-              <Button variant="outline" size="sm" onClick={() => setClearModalOpen(false)}>
-                रद्द गर्नुहोस्
+              <Button variant="outline" size="sm" onClick={() => setResetModalOpen(false)}>
+                Cancel
               </Button>
               <Button
                 variant="primary"
@@ -1156,39 +1004,37 @@ export default function DailyMealsPage() {
                 loading={isSaving}
                 className="bg-rose-600 text-xs font-semibold text-white hover:bg-rose-700"
               >
-                रिसेट गर्नुहोस् (Reset)
+                Reset to Defaults
               </Button>
             </div>
           </div>
         </Modal>
 
-        {/* Modal: Public Preview */}
+        {/* Modal: Live Resident Preview */}
         <Modal
           open={previewOpen}
           onClose={() => setPreviewOpen(false)}
-          title={`पूर्वावलोकन: ${currentDayInfo?.labelNp} (${currentDayInfo?.labelEn})`}
+          title="Resident &amp; Public Preview"
         >
-          <div className="max-h-[70vh] space-y-4 overflow-y-auto pr-1">
+          <div className="max-h-[75vh] space-y-4 overflow-y-auto pr-1">
             <div className="space-y-3 rounded-2xl border border-neutral-200 bg-neutral-50 p-4">
-              <div className="flex items-center justify-between border-b border-neutral-200 pb-2">
+              <div className="flex items-center justify-between border-b border-neutral-200 pb-2.5">
                 <div>
-                  <h3 className="text-base font-extrabold text-neutral-900">
-                    दैनिक भोजन तालिका — {currentDayInfo?.labelNp}
-                  </h3>
-                  <p className="text-xs text-neutral-500">Hostel Mess Timings &amp; Menu</p>
+                  <h3 className="text-base font-extrabold text-neutral-900">Hostel Meal Timings</h3>
+                  <p className="text-xs text-neutral-500">Live resident app view</p>
                 </div>
-                <Badge tone="green" className="text-xs">
-                  स्वस्थ तथा पौष्टिक
+                <Badge tone="green" className="text-xs font-semibold">
+                  Nutritious &amp; Hygienic
                 </Badge>
               </div>
 
-              <div className="space-y-2 pt-1">
+              <div className="space-y-2.5 pt-1">
                 {meals
                   .filter((m) => m.isActive)
                   .map((m, idx) => (
                     <div
                       key={`prev-${idx}`}
-                      className="shadow-xs space-y-1 rounded-xl border border-neutral-200 bg-white p-3"
+                      className="shadow-xs space-y-1.5 rounded-xl border border-neutral-200 bg-white p-3.5"
                     >
                       <div className="flex items-center justify-between">
                         <span className="text-sm font-bold text-neutral-900">
@@ -1199,13 +1045,13 @@ export default function DailyMealsPage() {
                             </span>
                           )}
                         </span>
-                        <span className="inline-flex items-center gap-1 rounded bg-neutral-100 px-2 py-0.5 text-xs font-semibold text-neutral-700">
+                        <span className="inline-flex items-center gap-1 rounded-md bg-neutral-100 px-2.5 py-1 text-xs font-semibold text-neutral-700">
                           <Clock size={11} className="text-neutral-500" />
                           {m.time}
                         </span>
                       </div>
                       <p className="text-xs leading-relaxed text-neutral-600">
-                        {m.menuDescription || "कुनै मेनु विवरण तोकिएको छैन"}
+                        {m.menuDescription || "Standard wholesome mess meal provided."}
                       </p>
                     </div>
                   ))}
@@ -1214,7 +1060,7 @@ export default function DailyMealsPage() {
 
             <div className="flex justify-end pt-2">
               <Button variant="outline" size="sm" onClick={() => setPreviewOpen(false)}>
-                बन्द गर्नुहोस् (Close)
+                Close Preview
               </Button>
             </div>
           </div>

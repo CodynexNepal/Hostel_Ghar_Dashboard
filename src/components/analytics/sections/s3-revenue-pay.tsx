@@ -24,16 +24,11 @@ export function RevenueSection({ base }: { base: AnalyticsBase }) {
   );
   const tot = data.reduce((a, d) => a + d.total, 0);
   const pend = data.reduce((a, d) => a + d.pending, 0);
-  const hasLiveTrend =
-    (base.liveTrend?.length ?? 0) > 0 && (mode === "monthly" || mode === "yearly");
-  const hasLedger = (base.fees?.length ?? 0) > 0;
   const subtitle =
-    !hasLiveTrend && !hasLedger
+    data.length === 0
       ? "No collections yet"
-      : hasLiveTrend
-        ? `${formatCurrency(tot)} collected · live from owner summary`
-        : `${formatCurrency(tot)} collected · from fee ledger`;
-  if (!hasLiveTrend && !hasLedger) {
+      : `${formatCurrency(tot)} collected${pend > 0 ? ` · ${formatCurrency(pend)} pending` : ""}`;
+  if (data.length === 0) {
     return (
       <ChartShell
         title="Revenue analytics"

@@ -76,9 +76,17 @@ export function MovementSection({ base }: { base: AnalyticsBase }) {
       cur.collected += collectedOf(f);
       acc.set(id, cur);
     }
+    if (acc.size === 0 && base.liveTrend && base.liveTrend.length > 0) {
+      return base.liveTrend.map((t, idx) => ({
+        label: t.label,
+        billed: t.billed ?? t.collected,
+        collected: t.collected,
+        key: idx,
+      }));
+    }
     return [...acc.values()].sort((a, b) => a.key - b.key).slice(-8);
-  }, [fees]);
-  if (fees.length === 0) {
+  }, [fees, base.liveTrend]);
+  if (data.length === 0) {
     return (
       <ChartShell title="Billing activity" subtitle="No fee ledger yet">
         <EmptyState
@@ -93,7 +101,7 @@ export function MovementSection({ base }: { base: AnalyticsBase }) {
   return (
     <ChartShell
       title="Billing activity"
-      subtitle={`${formatCurrency(collected)} collected of ${formatCurrency(billed)} billed · live ledger`}
+      subtitle={`${formatCurrency(collected)} collected of ${formatCurrency(billed)} billed`}
       onExport={() =>
         downloadCSV(
           "billing.csv",
@@ -130,11 +138,6 @@ export function MovementSection({ base }: { base: AnalyticsBase }) {
           formatV={(v) => formatCurrency(v)}
         />
       </div>
-      <Insight
-        tone="info"
-        title="Live billing only."
-        body="Every bar comes from GET /fees/hostels/:id rows — no modeled check-ins."
-      />
     </ChartShell>
   );
 }

@@ -19,7 +19,7 @@ export function PerformanceSection({ base }: { base: AnalyticsBase }) {
       <ChartShell title="My hostels" subtitle="No hostel rows yet">
         <EmptyState
           title="No hostels yet"
-          description="Your hostels from GET /owner/dashboard will appear here."
+          description="Your hostels will appear here once configured."
         />
       </ChartShell>
     );
@@ -27,7 +27,7 @@ export function PerformanceSection({ base }: { base: AnalyticsBase }) {
   return (
     <ChartShell
       title="My hostels"
-      subtitle={`${rows.length} hostel${rows.length === 1 ? "" : "s"} · ${totalRes} active residents · live`}
+      subtitle={`${rows.length} hostel${rows.length === 1 ? "" : "s"} · ${totalRes} active residents`}
       onExport={() =>
         downloadCSV(
           "my-hostels.csv",
@@ -70,11 +70,6 @@ export function PerformanceSection({ base }: { base: AnalyticsBase }) {
           </li>
         ))}
       </ul>
-      <Insight
-        tone="info"
-        title="Your hostels only."
-        body="Rows come straight from GET /owner/dashboard — no platform comparison."
-      />
     </ChartShell>
   );
 }

@@ -129,12 +129,25 @@ export default function AnalyticsPage() {
       return [] as Expense[];
     }
   }, [user?.hostelId]);
+  const feesQ = useApi(async () => {
+    try {
+      const hid =
+        user?.hostelId ||
+        (Array.isArray(dash.data?.hostels) ? dash.data.hostels[0]?.hostelId : undefined);
+      if (!hid) return [] as Fee[];
+      const res = await hostelGhar.fees.hostelFees(hid, { limit: 500 });
+      return toPaginated<Fee>(res.data).items;
+    } catch {
+      return [] as Fee[];
+    }
+  }, [user?.hostelId, dash.data?.hostels]);
   const s = summaryQ.data;
   const d = dash.data;
   const dashHostels = d?.hostels;
   const roomsData = roomsQ.data;
   const residentsData = residentsQ.data;
   const expensesData = expensesQ.data;
+  const feesData = feesQ.data;
   const hostels: OwnerDashboardHostel[] = useMemo(
     () => (Array.isArray(dashHostels) ? dashHostels : []),
     [dashHostels]
@@ -142,12 +155,14 @@ export default function AnalyticsPage() {
   const liveRooms: Room[] = useMemo(() => roomsData ?? [], [roomsData]);
   const liveResidents: Resident[] = useMemo(() => residentsData ?? [], [residentsData]);
   const liveExpenses: Expense[] = useMemo(() => expensesData ?? [], [expensesData]);
+  const liveFees: Fee[] = useMemo(() => feesData ?? [], [feesData]);
   const isLoading =
     summaryQ.isLoading ||
     dash.isLoading ||
     roomsQ.isLoading ||
     residentsQ.isLoading ||
-    expensesQ.isLoading;
+    expensesQ.isLoading ||
+    feesQ.isLoading;
   // Owner endpoints only: failed when NEITHER aggregate responds.
   // List endpoints degrade to [] (their sections show live empty-states).
   const failed = Boolean(summaryQ.error && dash.error && !s && !d);
@@ -158,6 +173,7 @@ export default function AnalyticsPage() {
     liveRooms.length === 0 &&
     liveResidents.length === 0 &&
     liveExpenses.length === 0 &&
+    liveFees.length === 0 &&
     rowResidents === 0;
   return (
     <DashboardShell
@@ -171,7 +187,13 @@ export default function AnalyticsPage() {
             // residents, expenses list → monthly spend. Summary/dashboard fill
             // gaps; NOTHING falls back to platform demo totals.
             const rt = liveRooms.length > 0 ? roomsTotals(liveRooms) : null;
-            const summaryTrend = (s?.revenueTrend ?? []).map((p) => ({
+            const rawTrend =
+              s?.revenueTrend && s.revenueTrend.length > 0
+                ? s.revenueTrend
+                : d?.revenueTrend && d.revenueTrend.length > 0
+                  ? d.revenueTrend
+                  : [];
+            const summaryTrend = rawTrend.map((p) => ({
               label: p.label,
               collected: p.collected,
               billed:
@@ -218,7 +240,8 @@ export default function AnalyticsPage() {
                 d ||
                 liveRooms.length > 0 ||
                 liveResidents.length > 0 ||
-                liveExpenses.length > 0
+                liveExpenses.length > 0 ||
+                liveFees.length > 0
               ),
               liveTrend,
               hasRevenueTrend: (liveTrend?.length ?? 0) > 0,
@@ -241,11 +264,11 @@ export default function AnalyticsPage() {
                 (rt ? liveRooms.filter((r) => r.status === "AVAILABLE").length : undefined),
               rooms: liveRooms,
               residents: liveResidents,
-              fees: [],
+              fees: liveFees,
               expenses: liveExpenses,
               hasRooms: !roomsQ.isLoading,
               hasResidents: !residentsQ.isLoading,
-              hasFees: false,
+              hasFees: !feesQ.isLoading && liveFees.length > 0,
               hasExpenses: !expensesQ.isLoading,
               hostels: hostels.map((h) => ({
                 hostelId: h.hostelId,
@@ -267,12 +290,14 @@ export default function AnalyticsPage() {
             liveRooms,
             liveResidents,
             liveExpenses,
+            liveFees,
             hostels,
-            rowResidents,
-            derivedRooms,
             roomsQ.isLoading,
             residentsQ.isLoading,
+            feesQ.isLoading,
             expensesQ.isLoading,
+            derivedRooms,
+            rowResidents,
           ])}
           hostel={hostel}
           setHostel={setHostel}

@@ -111,7 +111,19 @@ export function revenueSeries(
   }
   void seed;
   const list = fees ?? base.fees ?? [];
-  if (list.length === 0) return [];
+  if (list.length === 0) {
+    if (liveTrend && liveTrend.length > 0) {
+      const buckets = liveTrend.slice(-12);
+      const per = (p: { billed?: number; collected: number }) =>
+        Math.max(0, Math.round((p.billed ?? p.collected) - p.collected));
+      return buckets.map((p) => {
+        const pending = per(p);
+        const rent = p.collected;
+        return { label: p.label, rent, pending, other: 0, total: rent, prevTotal: 0 };
+      });
+    }
+    return [];
+  }
   if (mode === "daily") return bucketFeesByDay(list);
   if (mode === "weekly") return bucketFeesByWeek(list);
   return bucketFeesByMonth(list, mode === "yearly");

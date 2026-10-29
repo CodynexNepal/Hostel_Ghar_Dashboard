@@ -121,7 +121,7 @@ export function GrowthSection({ base }: { base: AnalyticsBase }) {
       <Insight
         tone={joined > 0 ? "good" : "info"}
         title={joined > 0 ? `${joined} joins in the window.` : "No joins in the window."}
-        body="Straight from GET /owner/residents joined dates — no modeled churn."
+        body="Derived from your resident move-in dates."
       />
     </ChartShell>
   );

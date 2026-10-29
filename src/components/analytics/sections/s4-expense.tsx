@@ -98,7 +98,7 @@ export function ExpenseSection({ base }: { base: AnalyticsBase }) {
           )
         )
       }
-      footer={<p>Live from GET /expenses — owner hostels only.</p>}
+      footer={<p className="text-xs text-neutral-400">Recorded expenses for your hostels.</p>}
     >
       {rows.length === 0 ? (
         <EmptyState

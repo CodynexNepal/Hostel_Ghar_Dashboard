@@ -3,15 +3,6 @@ import { Card, CardHeader } from "@/components/ui/Card";
 import { formatCurrency } from "@/lib/utils";
 import type { RevenueTrendPoint } from "@/lib/api-types";
 
-const FALLBACK_MONTHS = [
-  { m: "Apr", v: 62 },
-  { m: "May", v: 74 },
-  { m: "Jun", v: 68 },
-  { m: "Jul", v: 82 },
-  { m: "Aug", v: 91 },
-  { m: "Sep", v: 96 },
-];
-
 interface RevenueChartProps {
   /** Live buckets from the owner-dashboard aggregate. */
   points?: RevenueTrendPoint[];
@@ -24,25 +15,31 @@ export function RevenueChart({ points, collectionRate }: RevenueChartProps = {})
     ? points.filter((p) => p && typeof p === "object").slice(-12)
     : [];
   const hasLive = live.length > 0;
-  const bars = hasLive
-    ? live.map((p) => ({
-        m: String(p.label ?? "—"),
-        v: Number.isFinite(p.collected) ? (p.collected as number) : 0,
-        billed: Number.isFinite(p.billed) ? (p.billed as number | undefined) : undefined,
-        outstanding: Number.isFinite(p.outstanding)
-          ? (p.outstanding as number | undefined)
-          : undefined,
-      }))
-    : FALLBACK_MONTHS.map((x) => ({
-        m: x.m,
-        v: x.v,
-        billed: undefined as number | undefined,
-        outstanding: undefined as number | undefined,
-      }));
+
+  if (!hasLive) {
+    return (
+      <Card>
+        <CardHeader title="Revenue collection" subtitle="No billing activity recorded yet" />
+        <div className="flex h-44 flex-col items-center justify-center p-6 text-center">
+          <p className="text-sm font-semibold text-neutral-800">No revenue data yet</p>
+          <p className="mt-1 max-w-sm text-xs text-neutral-500">
+            Generate monthly fees and record payments to see your revenue trends here.
+          </p>
+        </div>
+      </Card>
+    );
+  }
+
+  const bars = live.map((p) => ({
+    m: String(p.label ?? "—"),
+    v: Number.isFinite(p.collected) ? (p.collected as number) : 0,
+    billed: Number.isFinite(p.billed) ? (p.billed as number | undefined) : undefined,
+    outstanding: Number.isFinite(p.outstanding) ? (p.outstanding as number | undefined) : undefined,
+  }));
+
   const max = Math.max(1, ...bars.map((x) => Math.max(x.v, x.billed ?? 0)));
   const first = bars[0];
-  const best =
-    hasLive && bars.length > 1 && first ? bars.reduce((a, b) => (b.v > a.v ? b : a), first) : null;
+  const best = bars.length > 1 && first ? bars.reduce((a, b) => (b.v > a.v ? b : a), first) : null;
   const totalCollected = bars.reduce((s, x) => s + x.v, 0);
   const totalBilled = bars.reduce((s, x) => s + (x.billed ?? x.v + (x.outstanding ?? 0)), 0);
   const effectiveRate =
@@ -52,9 +49,8 @@ export function RevenueChart({ points, collectionRate }: RevenueChartProps = {})
         ? Math.round((totalCollected / totalBilled) * 1000) / 10
         : undefined;
 
-  // ——— Single live month: a lone bar looks broken/empty, so render a
-  // collection-efficiency view (donut + billed vs collected breakdown). ———
-  if (hasLive && bars.length === 1) {
+  // ——— Single live month: render a collection-efficiency view (donut + billed vs collected breakdown) ———
+  if (bars.length === 1) {
     const only = bars[0];
     if (!only) return null;
     const billed = only.billed ?? only.v + (only.outstanding ?? 0);
@@ -136,9 +132,6 @@ export function RevenueChart({ points, collectionRate }: RevenueChartProps = {})
                 <dd className="font-bold text-neutral-900">{formatCurrency(outstanding)}</dd>
               </div>
             </dl>
-            <p className="text-xs text-neutral-500">
-              Only {only.m} billed so far — the monthly trend appears once more months close.
-            </p>
           </div>
         </div>
       </Card>
@@ -146,16 +139,14 @@ export function RevenueChart({ points, collectionRate }: RevenueChartProps = {})
   }
 
   const delta =
-    effectiveRate !== undefined
-      ? `${Math.round(effectiveRate * 10) / 10}% collected`
-      : hasLive
-        ? undefined
-        : "+12.5%";
-  const subtitle = hasLive
-    ? `${formatCurrency(totalCollected)} collected${totalBilled > totalCollected ? ` of ${formatCurrency(totalBilled)} billed` : ""} · ${bars.length} month${bars.length === 1 ? "" : "s"}${
-        best ? ` · ${best.m} best at ${formatCurrency(best.v)}` : ""
-      }`
-    : "Last 6 months · Sep at 96%";
+    effectiveRate !== undefined ? `${Math.round(effectiveRate * 10) / 10}% collected` : undefined;
+
+  const subtitle = `${formatCurrency(totalCollected)} collected${
+    totalBilled > totalCollected ? ` of ${formatCurrency(totalBilled)} billed` : ""
+  } · ${bars.length} month${bars.length === 1 ? "" : "s"}${
+    best ? ` · ${best.m} best at ${formatCurrency(best.v)}` : ""
+  }`;
+
   return (
     <Card>
       <CardHeader
@@ -169,15 +160,11 @@ export function RevenueChart({ points, collectionRate }: RevenueChartProps = {})
           ) : undefined
         }
       />
-      <div className="px-5 pb-2 pt-4">
+      <div className="px-5 pb-4 pt-4">
         <div
-          className="flex h-44 min-w-0 items-end gap-2 sm:gap-3"
+          className="flex h-44 w-full items-end gap-3 sm:gap-4"
           role="img"
-          aria-label={
-            hasLive
-              ? `Revenue bar chart, ${bars.length} months, ${best?.m} highest`
-              : "Revenue bar chart, September highest at 96 percent"
-          }
+          aria-label={`Revenue bar chart, ${bars.length} months, ${best?.m} highest`}
         >
           {bars.map((x) => {
             const pct = Math.max(0, Math.min(100, (x.v / max) * 100));
@@ -186,35 +173,39 @@ export function RevenueChart({ points, collectionRate }: RevenueChartProps = {})
                 ? Math.max(0, Math.min(100, (x.billed / max) * 100))
                 : undefined;
             return (
-              <div key={x.m} className="flex min-w-0 flex-1 flex-col items-center gap-2">
-                <div className="flex min-h-0 w-full flex-1 items-end rounded-md bg-neutral-100">
+              <div
+                key={x.m}
+                className="flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-2"
+              >
+                <div className="relative flex h-full w-full items-end justify-center rounded-lg bg-neutral-100/80 p-1">
                   <div
-                    className="relative w-full rounded-md bg-neutral-200"
-                    style={{ height: `${billedPct ?? pct}%` }}
-                    title={
-                      hasLive
-                        ? `${x.m}: ${formatCurrency(x.v)}${
-                            x.billed !== undefined
-                              ? ` of ${formatCurrency(x.billed)} billed`
-                              : x.outstanding !== undefined
-                                ? ` · ${formatCurrency(x.outstanding)} outstanding`
-                                : ""
-                          }`
-                        : `${x.m}: ${x.v}%`
-                    }
+                    className="relative w-full rounded-md bg-neutral-200 transition-all duration-500"
+                    style={{ height: `${Math.max(6, billedPct ?? pct)}%` }}
+                    title={`${x.m}: ${formatCurrency(x.v)}${
+                      x.billed !== undefined
+                        ? ` of ${formatCurrency(x.billed)} billed`
+                        : x.outstanding !== undefined
+                          ? ` · ${formatCurrency(x.outstanding)} outstanding`
+                          : ""
+                    }`}
                   >
                     <div
-                      className="absolute inset-x-0 bottom-0 rounded-md bg-brand-ink transition-all duration-500"
+                      className="absolute inset-x-0 bottom-0 rounded-md bg-neutral-900 transition-all duration-500"
                       style={{
                         height:
                           billedPct && x.billed
-                            ? `${(x.v / Math.max(1, x.billed)) * 100}%`
+                            ? `${Math.max(6, (x.v / Math.max(1, x.billed)) * 100)}%`
                             : "100%",
                       }}
                     />
                   </div>
                 </div>
-                <span className="text-xs font-medium text-neutral-500">{x.m}</span>
+                <div className="text-center">
+                  <span className="block truncate text-xs font-medium text-neutral-600">{x.m}</span>
+                  <span className="block text-[11px] font-semibold text-neutral-900">
+                    {formatCurrency(x.v)}
+                  </span>
+                </div>
               </div>
             );
           })}

@@ -24,8 +24,41 @@ export function RevExpSection({ base }: { base: AnalyticsBase }) {
     () => new Map(costMonths.map((m) => [m.label, m.total])),
     [costMonths]
   );
+  const revByLabel = useMemo(() => new Map(rev.map((r) => [r.label, r.total])), [rev]);
+  const allLabels = useMemo(() => {
+    const list: string[] = [];
+    rev.forEach((r) => {
+      if (!list.includes(r.label)) list.push(r.label);
+    });
+    costMonths.forEach((c) => {
+      if (!list.includes(c.label)) list.push(c.label);
+    });
+    return list;
+  }, [rev, costMonths]);
+
+  const data = useMemo(() => {
+    const costOf = (label: string): number => {
+      if (costByLabel.has(label)) return costByLabel.get(label) ?? 0;
+      const short = label.split(" ")[0];
+      const hit = costMonths.find((m) => m.label.startsWith(short));
+      return hit ? hit.total : 0;
+    };
+
+    return allLabels.map((label) => {
+      const revenue = revByLabel.get(label) ?? 0;
+      const expenses = costOf(label);
+      return {
+        label,
+        revenue,
+        expenses,
+        net: revenue - expenses,
+      };
+    });
+  }, [allLabels, revByLabel, costByLabel, costMonths]);
+
   const hasRev = rev.some((r) => r.total > 0);
   const hasCost = costMonths.some((m) => m.total > 0);
+
   if (!hasRev && !hasCost) {
     return (
       <ChartShell title="Revenue vs expenses" subtitle="No revenue or expenses yet">
@@ -36,18 +69,6 @@ export function RevExpSection({ base }: { base: AnalyticsBase }) {
       </ChartShell>
     );
   }
-  const costOf = (label: string): number => {
-    if (costByLabel.has(label)) return costByLabel.get(label) ?? 0;
-    const short = label.split(" ")[0];
-    const hit = costMonths.find((m) => m.label.startsWith(short));
-    return hit ? hit.total : 0;
-  };
-  const data = rev.map((r) => ({
-    label: r.label,
-    revenue: r.total,
-    expenses: costOf(r.label),
-    net: r.total - costOf(r.label),
-  }));
   const neg = data.filter((d) => d.net < 0 && (d.revenue > 0 || d.expenses > 0));
   return (
     <ChartShell

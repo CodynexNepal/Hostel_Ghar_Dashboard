@@ -1384,6 +1384,26 @@ export interface MealDayItem {
   updatedAt?: string | null;
 }
 
+export interface DailyMealItem {
+  id?: string;
+  mealName: string;
+  mealNameEn?: string | null;
+  time: string;
+  menuDescription?: string | null;
+  isActive: boolean;
+  orderIndex: number;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+}
+
+export interface DailyMealSchedule {
+  hostelId: string;
+  hasSchedule: boolean;
+  isConfigured: boolean;
+  lastUpdatedAt: string | null;
+  schedule: DailyMealItem[];
+}
+
 export interface WeeklyMealSchedule {
   hostelId: string;
   hasSchedule?: boolean;

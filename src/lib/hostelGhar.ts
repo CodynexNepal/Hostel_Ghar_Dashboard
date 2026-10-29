@@ -98,6 +98,8 @@ import type {
   InvoiceListParams,
   WeeklyMealSchedule,
   MealDayItem,
+  DailyMealItem,
+  DailyMealSchedule,
   HostelLocation,
   UpdateHostelLocationPayload,
 } from "./api-types";
@@ -3538,6 +3540,40 @@ export const hostelGhar = {
     clear: (hostelId: string) =>
       api.delete<ApiEnvelope<WeeklyMealSchedule>>(
         `${PREFIX}/hostels/${encodeURIComponent(hostelId)}/meals`
+      ),
+
+    /** GET /hostels/:hostelId/meals/daily — daily meal schedule. */
+    getDaily: (hostelId: string) =>
+      getWithRetry<ApiEnvelope<DailyMealSchedule>>(
+        `${PREFIX}/hostels/${encodeURIComponent(hostelId)}/meals/daily`
+      ),
+    /** PUT /hostels/:hostelId/meals/daily — save all daily meal slots. */
+    saveDaily: (hostelId: string, meals: DailyMealItem[]) =>
+      api.put<ApiEnvelope<DailyMealSchedule>>(
+        `${PREFIX}/hostels/${encodeURIComponent(hostelId)}/meals/daily`,
+        { meals }
+      ),
+    /** POST /hostels/:hostelId/meals/daily — add a new daily meal slot. */
+    createDaily: (hostelId: string, meal: Partial<DailyMealItem>) =>
+      api.post<ApiEnvelope<DailyMealItem>>(
+        `${PREFIX}/hostels/${encodeURIComponent(hostelId)}/meals/daily`,
+        meal
+      ),
+    /** PUT /hostels/:hostelId/meals/daily/:id — update a specific daily meal slot. */
+    updateDaily: (hostelId: string, id: string, meal: Partial<DailyMealItem>) =>
+      api.put<ApiEnvelope<DailyMealItem>>(
+        `${PREFIX}/hostels/${encodeURIComponent(hostelId)}/meals/daily/${encodeURIComponent(id)}`,
+        meal
+      ),
+    /** DELETE /hostels/:hostelId/meals/daily/:id — delete a daily meal slot. */
+    deleteDaily: (hostelId: string, id: string) =>
+      api.delete<ApiEnvelope<{ success: boolean }>>(
+        `${PREFIX}/hostels/${encodeURIComponent(hostelId)}/meals/daily/${encodeURIComponent(id)}`
+      ),
+    /** DELETE /hostels/:hostelId/meals/daily — clear/reset daily meal schedule. */
+    clearDaily: (hostelId: string) =>
+      api.delete<ApiEnvelope<DailyMealSchedule>>(
+        `${PREFIX}/hostels/${encodeURIComponent(hostelId)}/meals/daily`
       ),
   },
 

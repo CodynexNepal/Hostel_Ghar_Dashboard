@@ -42,7 +42,7 @@ export const OWNER_NAVIGATION: NavItem[] = [
       { label: "Rooms", href: "/rooms", permission: "MANAGE_ROOMS" },
       { label: "Beds", href: "/beds", permission: "MANAGE_ROOMS" },
       { label: "Facilities", href: "/hostel/facilities", permission: "VIEW_HOSTEL" },
-      { label: "Weekly Meals", href: "/hostel/meals", permission: "VIEW_HOSTEL" },
+      { label: "Daily Meals", href: "/hostel/meals", permission: "VIEW_HOSTEL" },
       { label: "Location & Map", href: "/hostel/location", permission: "VIEW_HOSTEL" },
     ],
   },

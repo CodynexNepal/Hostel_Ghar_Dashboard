@@ -2743,21 +2743,58 @@ export const hostelGhar = {
   },
 
   bookings: {
-    create: (payload: CreateBookingPayload, idempotencyKey?: string) =>
-      api.post<Booking>(`${PREFIX}/bookings`, payload, {
-        headers: idemHeaders(idempotencyKey ?? newIdempotencyKey()),
-      }),
-    myBookings: () =>
-      getWithRetry<Booking[] | ApiEnvelope<Booking[]>>(`${PREFIX}/bookings/my-bookings`),
-    hostelBookings: (hostelId: string, params?: ListParams) =>
-      getWithRetry<Booking[] | ApiEnvelope<Booking[]>>(
-        `${PREFIX}/bookings/hostels/${hostelId}`,
-        params
-      ),
-    updateStatus: (bookingId: string, payload: { status: string }) =>
-      api.patch<Booking>(`${PREFIX}/bookings/${bookingId}/status`, payload),
-    cancel: (bookingId: string) =>
-      api.delete<{ message: string }>(`${PREFIX}/bookings/${bookingId}`),
+    create: async (payload: CreateBookingPayload, idempotencyKey?: string) => {
+      const key = idempotencyKey ?? newIdempotencyKey();
+      const headers = idemHeaders(key);
+      try {
+        return await api.post<Booking>(`${PREFIX}/bookings`, payload, { headers });
+      } catch (err) {
+        return await api.post<Booking>(`/bookings`, payload, { headers });
+      }
+    },
+    myBookings: async () => {
+      try {
+        return await getWithRetry<Booking[] | ApiEnvelope<Booking[]>>(
+          `${PREFIX}/bookings/my-bookings`
+        );
+      } catch (err) {
+        return await getWithRetry<Booking[] | ApiEnvelope<Booking[]>>(`/bookings/my-bookings`);
+      }
+    },
+    hostelBookings: async (hostelId: string, params?: ListParams) => {
+      try {
+        return await getWithRetry<Booking[] | ApiEnvelope<Booking[]>>(
+          `${PREFIX}/bookings/hostels/${hostelId}`,
+          params
+        );
+      } catch (err) {
+        return await getWithRetry<Booking[] | ApiEnvelope<Booking[]>>(
+          `/bookings/hostels/${hostelId}`,
+          params
+        );
+      }
+    },
+    updateStatus: async (bookingId: string, payload: { status: string }) => {
+      try {
+        return await api.patch<Booking>(`${PREFIX}/bookings/${bookingId}/status`, payload);
+      } catch (err) {
+        return await api.patch<Booking>(`/bookings/${bookingId}/status`, payload);
+      }
+    },
+    cancel: async (bookingId: string) => {
+      try {
+        return await api.delete<{ message: string }>(`${PREFIX}/bookings/${bookingId}`);
+      } catch (err) {
+        return await api.delete<{ message: string }>(`/bookings/${bookingId}`);
+      }
+    },
+    delete: async (bookingId: string) => {
+      try {
+        return await api.delete<{ message: string }>(`${PREFIX}/bookings/${bookingId}`);
+      } catch (err) {
+        return await api.delete<{ message: string }>(`/bookings/${bookingId}`);
+      }
+    },
   },
 
   hostels: {

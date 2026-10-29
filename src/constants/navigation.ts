@@ -33,12 +33,14 @@ export interface NavItem {
 
 export const OWNER_NAVIGATION: NavItem[] = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard, permission: "VIEW_DASHBOARD" },
+  { label: "Bookings", href: "/bookings", icon: CalendarCheck2, permission: "VIEW_HOSTEL" },
   {
     label: "Hostel",
     icon: Building2,
     permission: "VIEW_HOSTEL",
     children: [
       { label: "Overview", href: "/hostel", permission: "VIEW_HOSTEL" },
+      { label: "Bookings", href: "/bookings", permission: "VIEW_HOSTEL" },
       { label: "Rooms", href: "/rooms", permission: "MANAGE_ROOMS" },
       { label: "Beds", href: "/beds", permission: "MANAGE_ROOMS" },
       { label: "Facilities", href: "/hostel/facilities", permission: "VIEW_HOSTEL" },
@@ -79,6 +81,7 @@ export const OWNER_NAVIGATION: NavItem[] = [
 
 export const RESIDENT_NAVIGATION: NavItem[] = [
   { label: "Dashboard", href: "/resident", icon: LayoutDashboard },
+  { label: "My Bookings", href: "/resident/bookings", icon: CalendarCheck2 },
   { label: "Check-In / Out", href: "/resident/attendance", icon: CalendarCheck2 },
   { label: "My Room", href: "/resident/room", icon: BedDouble },
   { label: "My Payments", href: "/resident/payments", icon: CreditCard },

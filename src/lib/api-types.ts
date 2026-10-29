@@ -188,16 +188,45 @@ export interface Booking {
   hostelName?: string;
   userId?: string;
   userName?: string;
+  studentName?: string;
+  studentEmail?: string;
+  studentPhone?: string;
+  roomType?: string;
+  roomNumber?: string;
+  duration?: string;
+  gender?: string;
   checkInDate: string;
   status: BookingStatus;
   remarks?: string;
   createdAt?: string;
+  updatedAt?: string;
+  user?: {
+    id: string;
+    name?: string;
+    firstName?: string;
+    lastName?: string;
+    email?: string;
+    phone?: string;
+  };
+  hostel?: {
+    id: string;
+    name: string;
+    city?: string;
+    address?: string;
+  };
 }
 
 export interface CreateBookingPayload {
   hostelId: string;
   checkInDate: string;
   remarks?: string;
+  studentName?: string;
+  studentEmail?: string;
+  studentPhone?: string;
+  roomType?: string;
+  roomNumber?: string;
+  duration?: string;
+  gender?: string;
 }
 
 /* ---------------- Leaves ---------------- */

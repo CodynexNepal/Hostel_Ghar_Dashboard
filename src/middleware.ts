@@ -6,6 +6,7 @@ import type { UserRole } from "@/types/auth";
 // Owner and staff management paths
 const OWNER_PREFIXES = [
   "/dashboard",
+  "/bookings",
   "/hostel",
   "/rooms",
   "/beds",

@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { BedDouble, FileText, Lock, Receipt, Users, Wallet } from "lucide-react";
+import { BedDouble, CalendarCheck2, FileText, Lock, Receipt, Users, Wallet } from "lucide-react";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useUpgrade } from "@/hooks/useUpgrade";
@@ -14,6 +14,13 @@ const ACTIONS: {
   icon: typeof Users;
   permission?: Permission;
 }[] = [
+  {
+    label: "Student Bookings",
+    desc: "Reservations & approvals",
+    href: "/bookings",
+    icon: CalendarCheck2,
+    permission: "VIEW_HOSTEL",
+  },
   {
     label: "Add Resident",
     desc: "Onboard a new resident",

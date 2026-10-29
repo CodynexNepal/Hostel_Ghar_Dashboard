@@ -12,6 +12,7 @@ import type { LeaveRequest } from "@/lib/api-types";
 import { formatDate } from "@/lib/utils";
 import { DashboardShell } from "@/components/layout/DashboardShell";
 import { EmptyState, ErrorState } from "@/components/ui/EmptyState";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { Protected } from "@/components/common/Protected";
 
 type LeavePagination = {
@@ -180,9 +181,24 @@ export default function HostelLeaveRequestsPage() {
           />
           <div className="p-5">
             {isLoading && (
-              <p role="status" className="text-sm text-neutral-500">
-                Loading...
-              </p>
+              <div className="space-y-4">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="space-y-3 rounded-xl border border-neutral-100 p-4">
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-1.5">
+                        <Skeleton className="h-4 w-36" />
+                        <Skeleton className="h-3 w-48" />
+                      </div>
+                      <Skeleton className="h-6 w-20 rounded-full" />
+                    </div>
+                    <Skeleton className="h-3.5 w-3/4" />
+                    <div className="flex items-center gap-3 pt-1">
+                      <Skeleton className="h-3 w-28" />
+                      <Skeleton className="h-3 w-28" />
+                    </div>
+                  </div>
+                ))}
+              </div>
             )}
             {!isLoading && error && (
               <ErrorState

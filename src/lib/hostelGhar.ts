@@ -3543,15 +3543,17 @@ export const hostelGhar = {
       ),
 
     /** GET /hostels/:hostelId/meals/daily — daily meal schedule. */
-    getDaily: (hostelId: string) =>
-      getWithRetry<ApiEnvelope<DailyMealSchedule>>(
-        `${PREFIX}/hostels/${encodeURIComponent(hostelId)}/meals/daily`
-      ),
+    getDaily: (hostelId: string, dayOfWeek?: string) => {
+      const q = dayOfWeek ? `?dayOfWeek=${encodeURIComponent(dayOfWeek)}` : "";
+      return getWithRetry<ApiEnvelope<DailyMealSchedule>>(
+        `${PREFIX}/hostels/${encodeURIComponent(hostelId)}/meals/daily${q}`
+      );
+    },
     /** PUT /hostels/:hostelId/meals/daily — save all daily meal slots. */
-    saveDaily: (hostelId: string, meals: DailyMealItem[]) =>
+    saveDaily: (hostelId: string, meals: DailyMealItem[], dayOfWeek?: string) =>
       api.put<ApiEnvelope<DailyMealSchedule>>(
         `${PREFIX}/hostels/${encodeURIComponent(hostelId)}/meals/daily`,
-        { meals }
+        { meals, dayOfWeek: dayOfWeek || "ALL" }
       ),
     /** POST /hostels/:hostelId/meals/daily — add a new daily meal slot. */
     createDaily: (hostelId: string, meal: Partial<DailyMealItem>) =>
@@ -3571,10 +3573,12 @@ export const hostelGhar = {
         `${PREFIX}/hostels/${encodeURIComponent(hostelId)}/meals/daily/${encodeURIComponent(id)}`
       ),
     /** DELETE /hostels/:hostelId/meals/daily — clear/reset daily meal schedule. */
-    clearDaily: (hostelId: string) =>
-      api.delete<ApiEnvelope<DailyMealSchedule>>(
-        `${PREFIX}/hostels/${encodeURIComponent(hostelId)}/meals/daily`
-      ),
+    clearDaily: (hostelId: string, dayOfWeek?: string) => {
+      const q = dayOfWeek ? `?dayOfWeek=${encodeURIComponent(dayOfWeek)}` : "";
+      return api.delete<ApiEnvelope<DailyMealSchedule>>(
+        `${PREFIX}/hostels/${encodeURIComponent(hostelId)}/meals/daily${q}`
+      );
+    },
   },
 
   location: {

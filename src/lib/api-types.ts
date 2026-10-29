@@ -1386,6 +1386,7 @@ export interface MealDayItem {
 
 export interface DailyMealItem {
   id?: string;
+  dayOfWeek?: string | null;
   mealName: string;
   mealNameEn?: string | null;
   time: string;
@@ -1398,10 +1399,12 @@ export interface DailyMealItem {
 
 export interface DailyMealSchedule {
   hostelId: string;
+  dayOfWeek?: string | null;
   hasSchedule: boolean;
   isConfigured: boolean;
   lastUpdatedAt: string | null;
   schedule: DailyMealItem[];
+  configuredDays?: string[];
 }
 
 export interface WeeklyMealSchedule {

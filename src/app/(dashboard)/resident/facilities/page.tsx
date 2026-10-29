@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
-import { Utensils, Clock, CheckCircle2 } from "lucide-react";
+import { Utensils, Clock, CheckCircle2, Calendar } from "lucide-react";
 import { DashboardShell } from "@/components/layout/DashboardShell";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
@@ -11,58 +11,124 @@ import { useMyRoomSummary } from "@/hooks/useMyRoomSummary";
 import { hostelGhar, unwrap } from "@/lib/hostelGhar";
 import type { DailyMealItem, DailyMealSchedule } from "@/lib/api-types";
 
+const DAYS_OF_WEEK = [
+  { key: "ALL", labelNp: "सबै दिन", labelEn: "All Days", shortNp: "सबै" },
+  { key: "SUNDAY", labelNp: "आइतबार", labelEn: "Sunday", shortNp: "आइत" },
+  { key: "MONDAY", labelNp: "सोमबार", labelEn: "Monday", shortNp: "सोम" },
+  { key: "TUESDAY", labelNp: "मंगलबार", labelEn: "Tuesday", shortNp: "मंगल" },
+  { key: "WEDNESDAY", labelNp: "बुधबार", labelEn: "Wednesday", shortNp: "बुध" },
+  { key: "THURSDAY", labelNp: "बिहीबार", labelEn: "Thursday", shortNp: "बिही" },
+  { key: "FRIDAY", labelNp: "शुक्रबार", labelEn: "Friday", shortNp: "शुक्र" },
+  { key: "SATURDAY", labelNp: "शनिबार", labelEn: "Saturday", shortNp: "शनि" },
+] as const;
+
 export default function ResidentFacilitiesPage() {
   const room = useMyRoomSummary();
   const fac = useHostelFacilities(room.hostelId);
 
+  // Auto-detect today's day of week
+  const todayKey = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"][
+    new Date().getDay()
+  ];
+
+  const [selectedDay, setSelectedDay] = useState<string>(todayKey);
   const [meals, setMeals] = useState<DailyMealItem[]>([]);
   const [mealsLoading, setMealsLoading] = useState(true);
 
-  const loadMeals = useCallback(async (hid: string) => {
-    setMealsLoading(true);
-    try {
-      const res = await hostelGhar.meals.getDaily(hid);
-      const data = unwrap<DailyMealSchedule>(res.data);
-      if (data && Array.isArray(data.schedule) && data.schedule.length > 0) {
-        setMeals(data.schedule);
-      } else {
+  const loadMeals = useCallback(
+    async (hid: string, day: string = selectedDay) => {
+      setMealsLoading(true);
+      try {
+        const res = await hostelGhar.meals.getDaily(hid, day);
+        const data = unwrap<DailyMealSchedule>(res.data);
+        if (data && Array.isArray(data.schedule) && data.schedule.length > 0) {
+          setMeals(data.schedule);
+        } else {
+          setMeals([]);
+        }
+      } catch {
         setMeals([]);
+      } finally {
+        setMealsLoading(false);
       }
-    } catch {
-      setMeals([]);
-    } finally {
-      setMealsLoading(false);
-    }
-  }, []);
+    },
+    [selectedDay]
+  );
 
   useEffect(() => {
     if (room.hostelId) {
-      loadMeals(room.hostelId);
+      loadMeals(room.hostelId, selectedDay);
     } else {
       setMealsLoading(false);
     }
-  }, [room.hostelId, loadMeals]);
+  }, [room.hostelId, selectedDay, loadMeals]);
+
+  const currentDayInfo = DAYS_OF_WEEK.find((d) => d.key === selectedDay);
 
   return (
     <DashboardShell title="Facilities &amp; Meals" subtitle={room.hostelName}>
       <div className="space-y-6">
         {/* Daily Meal Schedule Card */}
         <Card>
-          <div className="flex items-center justify-between border-b border-surface-border p-5">
+          <div className="flex flex-col gap-3 border-b border-surface-border p-5 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <div className="flex items-center gap-2">
                 <span className="bg-brand-lime/20 text-brand-black rounded-lg p-1.5">
                   <Utensils size={18} />
                 </span>
-                <h2 className="text-base font-bold text-neutral-900">Daily Meal Schedule</h2>
+                <h2 className="text-base font-bold text-neutral-900">
+                  दैनिक भोजन तालिका (Daily Meal Schedule)
+                </h2>
               </div>
               <p className="mt-1 text-xs text-neutral-500">
-                Daily meal and snack schedule specified by your hostel management.
+                Daily meal and snack schedule specified by your hostel management for each day of
+                the week.
               </p>
             </div>
-            <Badge tone="green" className="text-xs">
-              <CheckCircle2 size={12} className="mr-1" /> Daily Meals
-            </Badge>
+            <div className="flex items-center gap-2">
+              <Badge tone="green" className="text-xs">
+                <CheckCircle2 size={12} className="mr-1" />
+                {currentDayInfo?.labelNp} ({currentDayInfo?.labelEn})
+              </Badge>
+            </div>
+          </div>
+
+          {/* Day of Week Selector for Residents */}
+          <div className="border-b border-neutral-100 bg-neutral-50/60 px-5 py-3">
+            <div className="scrollbar-thin flex items-center gap-1.5 overflow-x-auto pb-1">
+              {DAYS_OF_WEEK.map((d) => {
+                const isSelected = selectedDay === d.key;
+                const isToday = d.key === todayKey;
+                return (
+                  <button
+                    key={d.key}
+                    type="button"
+                    onClick={() => setSelectedDay(d.key)}
+                    className={`flex shrink-0 cursor-pointer flex-col items-center rounded-xl px-3 py-1.5 text-xs font-semibold transition-all ${
+                      isSelected
+                        ? "bg-neutral-900 text-white shadow-sm ring-1 ring-neutral-900"
+                        : "border border-neutral-200/80 bg-white text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900"
+                    }`}
+                  >
+                    <div className="flex items-center gap-1">
+                      <span>{d.labelNp}</span>
+                      {isToday && (
+                        <span className="bg-brand-lime rounded px-1 text-[9px] font-bold text-neutral-950">
+                          आज
+                        </span>
+                      )}
+                    </div>
+                    <span
+                      className={`text-[10px] ${
+                        isSelected ? "text-neutral-300" : "text-neutral-400"
+                      }`}
+                    >
+                      {d.labelEn}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           {mealsLoading ? (
@@ -74,8 +140,8 @@ export default function ResidentFacilitiesPage() {
           ) : meals.length === 0 ? (
             <div className="p-5">
               <EmptyState
-                title="No meal schedule published"
-                description="Your hostel has not published a daily meal schedule yet."
+                title="यस दिनको लागि कुनै भोजन तालिका प्रकाशित छैन"
+                description="Your hostel has not published a meal schedule for this day yet."
               />
             </div>
           ) : (
@@ -85,19 +151,19 @@ export default function ResidentFacilitiesPage() {
                   <thead className="border-b border-neutral-200 bg-neutral-50 text-xs font-semibold text-neutral-800">
                     <tr>
                       <th scope="col" className="w-16 px-4 py-3 text-center">
-                        S.N.
+                        क्र.सं. (S.N.)
                       </th>
                       <th scope="col" className="px-4 py-3">
-                        Meal Slot
+                        खानाको प्रकार (Meal Slot)
                       </th>
                       <th scope="col" className="px-4 py-3">
-                        Serving Time
+                        समय (Serving Time)
                       </th>
                       <th scope="col" className="px-4 py-3">
-                        Menu Items
+                        मेनु / परिकार विवरण (Menu Items)
                       </th>
                       <th scope="col" className="w-24 px-4 py-3 text-center">
-                        Status
+                        अवस्था (Status)
                       </th>
                     </tr>
                   </thead>
@@ -130,11 +196,11 @@ export default function ResidentFacilitiesPage() {
                         <td className="px-4 py-3 text-center">
                           {meal.isActive ? (
                             <Badge tone="green" className="text-xs">
-                              Active
+                              सक्रिय
                             </Badge>
                           ) : (
                             <Badge tone="gray" className="text-xs">
-                              Inactive
+                              निष्क्रिय
                             </Badge>
                           )}
                         </td>
@@ -158,21 +224,23 @@ export default function ResidentFacilitiesPage() {
                         )}
                       </span>
                       {meal.isActive ? (
-                        <Badge tone="green" className="text-[11px]">
-                          Active
+                        <Badge tone="green" className="text-xs">
+                          सक्रिय
                         </Badge>
                       ) : (
-                        <Badge tone="gray" className="text-[11px]">
-                          Inactive
+                        <Badge tone="gray" className="text-xs">
+                          निष्क्रिय
                         </Badge>
                       )}
                     </div>
-                    <div className="flex items-center gap-1 text-xs text-neutral-700">
-                      <Clock size={12} className="text-neutral-500" />
+                    <div className="flex items-center gap-1 text-xs text-neutral-500">
+                      <Clock size={11} />
                       <span>{meal.time}</span>
                     </div>
                     {meal.menuDescription && (
-                      <p className="text-xs text-neutral-600">{meal.menuDescription}</p>
+                      <p className="rounded bg-neutral-50 p-2 text-xs text-neutral-700">
+                        {meal.menuDescription}
+                      </p>
                     )}
                   </div>
                 ))}
@@ -181,9 +249,9 @@ export default function ResidentFacilitiesPage() {
           )}
         </Card>
 
-        {/* Facilities Card */}
+        {/* Existing Hostel Facilities Section */}
         <Card>
-          <CardHeader title="Hostel facilities" subtitle="Maintained by your hostel team" />
+          <CardHeader title="Hostel Facilities" subtitle="Amenities available at this hostel" />
           {fac.isLoading ? (
             <div className="space-y-2 p-5">
               <Skeleton className="h-4 w-full" />
@@ -193,7 +261,7 @@ export default function ResidentFacilitiesPage() {
           ) : fac.error ? (
             <div className="p-5">
               <ErrorState
-                title="Couldn't load facilities"
+                title="Failed to load facilities"
                 description={fac.error.message}
                 onRetry={fac.retry}
               />
@@ -201,8 +269,8 @@ export default function ResidentFacilitiesPage() {
           ) : (fac.data ?? []).length === 0 ? (
             <div className="p-5">
               <EmptyState
-                title="No facilities yet"
-                description="Your hostel hasn't published facilities."
+                title="No facilities listed"
+                description="Your hostel has not published a facility list yet."
               />
             </div>
           ) : (

@@ -3023,6 +3023,7 @@ export const hostelGhar = {
   },
 
   resident: {
+    me: () => getWithRetry<unknown>(`${PREFIX}/resident/me`),
     applyLeave: (payload: ApplyLeavePayload) =>
       api.post<LeaveRequest>(`${PREFIX}/resident/leaves/apply`, payload, {
         headers: idemHeaders(newIdempotencyKey()),

@@ -26,20 +26,38 @@ export function Modal({
   size?: "sm" | "md" | "lg";
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  });
 
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") onCloseRef.current();
     };
     document.addEventListener("keydown", onKey);
     document.body.style.overflow = "hidden";
-    panelRef.current?.focus();
+
+    // Focus panel only once when modal opens, without stealing focus from inner inputs
+    const timer = setTimeout(() => {
+      if (
+        panelRef.current &&
+        (!document.activeElement ||
+          document.activeElement === document.body ||
+          !panelRef.current.contains(document.activeElement))
+      ) {
+        panelRef.current.focus();
+      }
+    }, 0);
+
     return () => {
+      clearTimeout(timer);
       document.removeEventListener("keydown", onKey);
       document.body.style.overflow = "";
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
 

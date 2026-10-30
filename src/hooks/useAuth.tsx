@@ -27,6 +27,7 @@ import {
   clearSessionCookie,
   clearToken,
   getHostelId,
+  setHostelId,
   getToken,
   setRoleCookie,
   setSessionCookie,
@@ -328,10 +329,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Revalidate in background so stale role/plan self-heals without blocking UI.
       hostelGhar.auth
         .me()
-        .then((profile) => {
+        .then(async (profile) => {
           const rawUser = unwrap(profile.data);
           if (!rawUser) return;
           const normalized = normalizeUser(rawUser, cached.role);
+          if (normalized.role === "RESIDENT") {
+            try {
+              const resProfile = await hostelGhar.resident.me();
+              const rData = unwrap<{ hostel?: { id?: string; name?: string } }>(resProfile.data);
+              if (rData?.hostel?.id) {
+                normalized.hostelId = rData.hostel.id;
+                normalized.hostelName = rData.hostel.name ?? normalized.hostelName;
+                setHostelId(rData.hostel.id);
+              }
+            } catch {
+              /* non-blocking */
+            }
+          }
           setUser(normalized);
           writeCachedUser(normalized);
           setRoleCookie(normalized.role);
@@ -343,11 +357,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } else {
       hostelGhar.auth
         .me()
-        .then((profile) => {
+        .then(async (profile) => {
           const rawUser = unwrap(profile.data);
           if (!rawUser) return;
           const tokenRole = roleFromToken(getToken());
           const normalized = normalizeUser(rawUser, tokenRole ?? "HOSTEL_OWNER");
+          if (normalized.role === "RESIDENT") {
+            try {
+              const resProfile = await hostelGhar.resident.me();
+              const rData = unwrap<{ hostel?: { id?: string; name?: string } }>(resProfile.data);
+              if (rData?.hostel?.id) {
+                normalized.hostelId = rData.hostel.id;
+                normalized.hostelName = rData.hostel.name ?? normalized.hostelName;
+                setHostelId(rData.hostel.id);
+              }
+            } catch {
+              /* non-blocking */
+            }
+          }
           setUser(normalized);
           writeCachedUser(normalized);
           setRoleCookie(normalized.role);
@@ -392,14 +419,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           token?: string;
           accessToken?: string;
           user?: unknown;
-          data?: { user?: unknown } | unknown;
+          data?: { user?: unknown; token?: string; accessToken?: string } | unknown;
         };
-        const token = body?.token ?? body?.accessToken;
+        const nestedData =
+          body?.data && typeof body.data === "object"
+            ? (body.data as Record<string, unknown>)
+            : null;
+        const token =
+          body?.token ??
+          body?.accessToken ??
+          (nestedData?.token as string | undefined) ??
+          (nestedData?.accessToken as string | undefined);
         let rawUser =
           body?.user ??
-          (body?.data && typeof body.data === "object" && "user" in body.data
-            ? body.data.user
-            : undefined);
+          nestedData?.user;
         if (token) setToken(token);
         else clearToken();
         const tokenRole = roleFromToken(token);
@@ -415,6 +448,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const normalized = normalizeUser(rawUser ?? { email }, tokenRole ?? "HOSTEL_OWNER");
         if (!rawUser && !tokenRole) {
           throw new Error("The server profile did not include a supported user role.");
+        }
+        if (normalized.role === "RESIDENT") {
+          try {
+            const resProfile = await hostelGhar.resident.me();
+            const rData = unwrap<{ hostel?: { id?: string; name?: string } }>(resProfile.data);
+            if (rData?.hostel?.id) {
+              normalized.hostelId = rData.hostel.id;
+              normalized.hostelName = rData.hostel.name ?? normalized.hostelName;
+              setHostelId(rData.hostel.id);
+            }
+          } catch {
+            /* non-blocking */
+          }
         }
         setUser(normalized);
         writeCachedUser(normalized);

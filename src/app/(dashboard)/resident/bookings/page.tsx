@@ -146,7 +146,7 @@ export default function ResidentBookingsPage() {
           <div className="shadow-xs flex flex-col gap-3 rounded-xl border border-surface-border bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="text-sm font-bold text-neutral-900">Your Booking History</h2>
-              <p className="text-xs text-neutral-500">Loaded live via GET /bookings/my-bookings</p>
+              <p className="text-xs text-neutral-500">Track and manage your hostel booking requests</p>
             </div>
 
             <div className="flex items-center gap-2">
@@ -298,11 +298,7 @@ export default function ResidentBookingsPage() {
             >
               <div className="space-y-4">
                 <p className="text-xs text-neutral-600">
-                  This will call{" "}
-                  <code className="rounded bg-neutral-100 px-1 py-0.5">
-                    DELETE /bookings/{cancellingId}
-                  </code>
-                  .
+                  This action cannot be undone. Your request will be withdrawn.
                 </p>
                 <div className="flex justify-end gap-2 pt-2">
                   <Button variant="outline" onClick={() => setCancellingId(null)}>
@@ -316,12 +312,12 @@ export default function ResidentBookingsPage() {
             </Modal>
           )}
 
-          {/* Book Hostel Modal: POST /bookings */}
+          {/* Book Hostel Modal */}
           <Modal
             open={isModalOpen}
             onClose={() => setIsModalOpen(false)}
             title="Book a Hostel"
-            description="Submit a booking request using POST /bookings"
+            description="Select your preferred hostel and expected check-in date"
             size="md"
           >
             <form onSubmit={handleCreateBooking} className="space-y-4">
@@ -369,7 +365,7 @@ export default function ResidentBookingsPage() {
                   Cancel
                 </Button>
                 <Button type="submit" variant="primary" loading={isSubmitting}>
-                  Submit Booking (POST /bookings)
+                  Submit Booking
                 </Button>
               </div>
             </form>

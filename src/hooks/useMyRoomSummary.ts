@@ -10,9 +10,10 @@ import { useAuth } from "@/hooks/useAuth";
 export function useMyRoomSummary() {
   const { user } = useAuth();
   const { hostelId, isResolving } = useResolvedHostelId();
-  const hostel = useResidentHostel(hostelId);
   const residence = useMyResidence(hostelId);
   const myRoom = residence.data ?? null;
+  const activeHostelId = myRoom?.hostelId || hostelId;
+  const hostel = useResidentHostel(activeHostelId);
   const hostelName = myRoom?.hostelName || hostel.data?.name || user?.hostelName || "My Hostel";
   const roomLabel = myRoom
     ? `Room ${myRoom.roomNumber || "—"} · Bed ${myRoom.bedNumber || "—"}`
@@ -27,7 +28,7 @@ export function useMyRoomSummary() {
   };
   const summary = useMemo(
     () => ({
-      hostelId,
+      hostelId: activeHostelId,
       hostelName,
       roomLabel,
       myRoom,
@@ -38,7 +39,7 @@ export function useMyRoomSummary() {
       retry,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [hostelId, hostelName, roomLabel, myRoom, hostel.data, residence.forbidden, isLoading, error]
+    [activeHostelId, hostelName, roomLabel, myRoom, hostel.data, residence.forbidden, isLoading, error]
   );
   return summary;
 }

@@ -92,16 +92,30 @@ export default function OwnerBookingsPage() {
     }
 
     try {
-      const listRes = await hostelGhar.hostels.list({ limit: 50 });
-      const items = toPaginated<Hostel>(listRes.data).items;
-      items.forEach((h) => {
-        if (h.id && !discoveredIds.has(h.id)) {
-          discoveredIds.add(h.id);
-          discoveredHostels.push(h);
-        }
+      const formHostelsRes = await hostelGhar.owner.residentFormHostels();
+      const formItems = toPaginated<{ id: string; name: string }>(unwrap(formHostelsRes.data)).items;
+      formItems.forEach((h) => {
+        const hid = validHostelId(h.id);
+        if (hid) discoveredIds.add(hid);
       });
     } catch {
       // ignore
+    }
+
+    // Only fallback to list if no owner-specific hostels were discovered
+    if (discoveredIds.size === 0) {
+      try {
+        const listRes = await hostelGhar.hostels.list({ limit: 50 });
+        const items = toPaginated<Hostel>(listRes.data).items;
+        items.forEach((h) => {
+          if (h.id && !discoveredIds.has(h.id)) {
+            discoveredIds.add(h.id);
+            discoveredHostels.push(h);
+          }
+        });
+      } catch {
+        // ignore
+      }
     }
 
     for (const hid of discoveredIds) {
@@ -153,7 +167,12 @@ export default function OwnerBookingsPage() {
     try {
       const res = await hostelGhar.bookings.hostelBookings(hostelId);
       const fetched = toPaginated<Booking>(res.data).items;
-      setBookings(fetched);
+      // Strictly enforce that only bookings belonging to this specific hostel are stored
+      const matched = fetched.filter((b) => {
+        const bHostelId = b.hostelId || b.hostel?.id;
+        return !bHostelId || bHostelId === hostelId;
+      });
+      setBookings(matched);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Failed to load bookings from database";
       setLoadError(message);
@@ -208,9 +227,15 @@ export default function OwnerBookingsPage() {
     }
   };
 
-  // Filtered Bookings from the Database
+  // Filtered Bookings strictly matching the selected hostel and active filters
   const filteredBookings = useMemo(() => {
     return bookings.filter((b) => {
+      // Must strictly belong to the selected hostel
+      const bHostelId = b.hostelId || b.hostel?.id;
+      if (selectedHostelId && bHostelId && bHostelId !== selectedHostelId) {
+        return false;
+      }
+
       const studentName =
         b.user?.name ||
         [b.user?.firstName, b.user?.lastName].filter(Boolean).join(" ") ||
@@ -238,20 +263,26 @@ export default function OwnerBookingsPage() {
 
       return matchesSearch && matchesStatus;
     });
-  }, [bookings, searchQuery, statusFilter]);
+  }, [bookings, selectedHostelId, searchQuery, statusFilter]);
 
-  // Statistics
+  // Statistics scoped strictly to selected hostel
   const stats = useMemo(() => {
-    const total = bookings.length;
-    const pending = bookings.filter((b) => b.status === "PENDING").length;
-    const confirmed = bookings.filter(
+    const scopedBookings = selectedHostelId
+      ? bookings.filter((b) => {
+          const bHostelId = b.hostelId || b.hostel?.id;
+          return !bHostelId || bHostelId === selectedHostelId;
+        })
+      : bookings;
+    const total = scopedBookings.length;
+    const pending = scopedBookings.filter((b) => b.status === "PENDING").length;
+    const confirmed = scopedBookings.filter(
       (b) => b.status === "CONFIRMED" || b.status === "APPROVED"
     ).length;
-    const rejected = bookings.filter(
+    const rejected = scopedBookings.filter(
       (b) => b.status === "REJECTED" || b.status === "CANCELLED"
     ).length;
     return { total, pending, confirmed, rejected };
-  }, [bookings]);
+  }, [bookings, selectedHostelId]);
 
   // Helper to extract student contact
   const getStudentInfo = (b: Booking) => {
@@ -313,7 +344,7 @@ export default function OwnerBookingsPage() {
   return (
     <DashboardShell
       title="Hostel Bookings"
-      subtitle={`Live booking requests from database for ${activeHostel?.name || "your hostel"}`}
+      subtitle={`Live booking requests for ${activeHostel?.name || "your hostel"}`}
     >
       <Protected permission="VIEW_HOSTEL">
         <div className="space-y-6">
@@ -325,7 +356,7 @@ export default function OwnerBookingsPage() {
               </span>
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-500">
-                  Select Hostel (GET /bookings/hostels/:hostelId)
+                  Select Hostel
                 </label>
                 <div className="relative mt-0.5">
                   <select
@@ -363,20 +394,20 @@ export default function OwnerBookingsPage() {
                 variant="ghost"
                 size="icon"
                 onClick={() => selectedHostelId && loadBookings(selectedHostelId)}
-                title="Reload from database"
+                title="Refresh Bookings"
               >
                 <RefreshCw size={16} className={isLoading ? "animate-spin" : ""} />
               </Button>
             </div>
           </div>
 
-          {/* Stats Cards from Real Database */}
+          {/* Stats Cards */}
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <Card className="flex items-center justify-between p-4">
               <div>
                 <p className="text-xs font-medium text-neutral-500">Total Bookings</p>
                 <p className="mt-1 text-2xl font-bold text-neutral-900">{stats.total}</p>
-                <p className="mt-0.5 text-[11px] text-neutral-400">Database total</p>
+                <p className="mt-0.5 text-[11px] text-neutral-400">Total requests</p>
               </div>
               <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-neutral-100 text-neutral-600">
                 <CalendarCheck2 size={20} />
@@ -470,17 +501,14 @@ export default function OwnerBookingsPage() {
             </div>
           </Card>
 
-          {/* Bookings Table strictly showing actual database rows */}
+          {/* Bookings Table */}
           <Card className="overflow-hidden">
             <div className="flex items-center justify-between border-b border-surface-border bg-neutral-50/60 px-5 py-3.5">
               <div className="flex items-center gap-2">
                 <h3 className="text-sm font-semibold text-neutral-900">
-                  Bookings in Database ({filteredBookings.length})
+                  Bookings ({filteredBookings.length})
                 </h3>
               </div>
-              <span className="text-xs text-neutral-500">
-                Endpoint: GET /bookings/hostels/{selectedHostelId || ":hostelId"}
-              </span>
             </div>
 
             {isLoading ? (
@@ -504,7 +532,7 @@ export default function OwnerBookingsPage() {
             ) : loadError ? (
               <div className="p-6">
                 <ErrorState
-                  title="Failed to load bookings from database"
+                  title="Failed to load bookings"
                   description={loadError}
                   onRetry={() => selectedHostelId && loadBookings(selectedHostelId)}
                 />
@@ -512,7 +540,7 @@ export default function OwnerBookingsPage() {
             ) : filteredBookings.length === 0 ? (
               <div className="p-8">
                 <EmptyState
-                  title="No bookings in database"
+                  title="No bookings found"
                   description={
                     searchQuery || statusFilter !== "ALL"
                       ? "No bookings match your current search or status filters."
@@ -623,7 +651,7 @@ export default function OwnerBookingsPage() {
                                     size="sm"
                                     onClick={() => handleUpdateStatus(b.id, "APPROVED")}
                                     className="h-8 bg-emerald-600 px-2.5 text-xs font-semibold text-white hover:bg-emerald-700"
-                                    title="Approve booking (PATCH /bookings/:id/status)"
+                                    title="Approve booking"
                                   >
                                     Approve
                                   </Button>
@@ -632,7 +660,7 @@ export default function OwnerBookingsPage() {
                                     size="sm"
                                     onClick={() => handleUpdateStatus(b.id, "REJECTED")}
                                     className="h-8 px-2 text-xs text-red-600 hover:border-red-300 hover:bg-red-50"
-                                    title="Reject booking (PATCH /bookings/:id/status)"
+                                    title="Reject booking"
                                   >
                                     Reject
                                   </Button>
@@ -676,7 +704,7 @@ export default function OwnerBookingsPage() {
                                 size="sm"
                                 onClick={() => setDeletingId(b.id)}
                                 className="h-8 px-2 text-red-500 hover:bg-red-50 hover:text-red-700"
-                                title="Delete booking (DELETE /bookings/:id)"
+                                title="Delete booking"
                               >
                                 <Trash2 size={15} />
                               </Button>
@@ -697,16 +725,12 @@ export default function OwnerBookingsPage() {
               open={Boolean(deletingId)}
               onClose={() => setDeletingId(null)}
               title="Delete Booking"
-              description="Are you sure you want to delete this booking from the database?"
+              description="Are you sure you want to delete this booking request?"
               size="sm"
             >
               <div className="space-y-4">
                 <p className="text-sm text-neutral-600">
-                  This action calls{" "}
-                  <code className="rounded bg-neutral-100 px-1 py-0.5 text-xs">
-                    DELETE /bookings/{deletingId}
-                  </code>{" "}
-                  and permanently removes the booking.
+                  This action permanently removes the booking request from your hostel.
                 </p>
                 <div className="flex items-center justify-end gap-2 pt-2">
                   <Button

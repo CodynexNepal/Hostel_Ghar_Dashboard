@@ -6,14 +6,13 @@ import { useAuth } from "@/hooks/useAuth";
 import { useSidebar } from "@/hooks/useSidebar";
 import { initials } from "@/lib/utils";
 import { cn } from "@/lib/utils";
-import { ResidentPlanBadge } from "@/components/resident/ResidentPlanBadge";
 
 export function Header({ title, subtitle }: { title: string; subtitle?: string }) {
   const { user, plan, subscriptionLoading, role } = useAuth();
   const { collapsed, toggleCollapsed, setMobileOpen } = useSidebar();
   const [showSearch, setShowSearch] = useState(false);
   const planLabel = plan ?? user?.subscription.plan ?? "FREE";
-  const isResident = role === "RESIDENT" || user?.role === "RESIDENT";
+  const isOwner = role === "HOSTEL_OWNER" || user?.role === "HOSTEL_OWNER";
   return (
     <header className="z-40 shrink-0 border-b border-surface-border bg-white/95 backdrop-blur">
       <div className="flex h-16 items-center gap-2 px-4 sm:gap-3 sm:px-6">
@@ -68,9 +67,7 @@ export function Header({ title, subtitle }: { title: string; subtitle?: string }
         </button>
         {user && (
           <div className="flex items-center gap-2">
-            {isResident ? (
-              <ResidentPlanBadge />
-            ) : (
+            {isOwner && (
               <Link
                 href="/subscription"
                 title="View subscription"

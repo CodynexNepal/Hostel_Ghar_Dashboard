@@ -7,7 +7,6 @@ import { Badge, statusTone } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { ErrorState } from "@/components/ui/EmptyState";
-import { ResidentPlanBadge } from "@/components/resident/ResidentPlanBadge";
 import { useAuth } from "@/hooks/useAuth";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { useHostelFacilities, useMyFees } from "@/hooks/useResidentDashboard";
@@ -29,10 +28,6 @@ export default function ResidentDashboardPage() {
   return (
     <DashboardShell title="My Dashboard" subtitle={subtitle}>
       <div className="space-y-5">
-        <div className="flex flex-wrap items-center gap-2 text-[13px] text-neutral-500">
-          <span>Hostel plan</span>
-          <ResidentPlanBadge />
-        </div>
         {(room.error || fees.error) && (
           <ErrorState
             title="Some sections couldn't load"

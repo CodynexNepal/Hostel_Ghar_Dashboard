@@ -7,7 +7,6 @@ import { navigationForRole, homeRouteForRole } from "@/constants/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { useSidebar } from "@/hooks/useSidebar";
 import { SidebarNavList } from "./SidebarNav";
-import { HostelPlanBadge } from "@/components/resident/HostelPlanBadge";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { initials } from "@/lib/utils";
 import { cn } from "@/lib/utils";
@@ -125,63 +124,51 @@ export function Sidebar() {
       >
         <SidebarNavList nav={nav} collapsed={collapsed} onNavigate={() => setMobileOpen(false)} />
       </nav>
-      <div className="shrink-0 border-t border-white/10 p-3">
-        {user.role === "RESIDENT" ? (
-          <div
-            className="block rounded-lg bg-white/5 p-3"
-            title={user.hostelName ? `${user.hostelName} plan` : "Hostel plan"}
-            aria-label={`Hostel plan ${user.subscription.plan}`}
-          >
-            <p className="text-[11px] font-medium uppercase tracking-wide text-neutral-400">
-              Hostel plan
-            </p>
-            <p className="mt-0.5 flex items-center gap-1.5 text-sm font-bold text-white">
-              <HostelPlanBadge hostelId={user.hostelId} dark />
-            </p>
-            <p className="mt-1.5 text-xs text-neutral-400">
-              {user.hostelName ? `${user.hostelName}` : "Set by your hostel owner"}
-            </p>
-          </div>
-        ) : !collapsed ? (
-          <Link
-            href="/subscription"
-            className="block rounded-lg bg-white/5 p-3 transition-colors hover:bg-white/10"
-          >
-            <p className="text-[11px] font-medium uppercase tracking-wide text-neutral-400">
-              Current plan
-            </p>
-            <p className="mt-0.5 flex items-center gap-1.5 text-sm font-bold text-white">
-              <span className="inline-block h-2 w-2 rounded-full bg-brand" />
-              {user.subscription.plan}
-            </p>
-            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10">
-              <div
-                className="h-full rounded-full bg-brand transition-all duration-500"
-                style={{ width: `${pct}%` }}
-              />
-            </div>
-            <p className="mt-1.5 text-xs text-neutral-400">
-              {unlimited ? (
-                <>Unlimited residents{used > 0 ? ` · ${used} in-house` : ""}</>
-              ) : (
-                <>
-                  {used} / {limit} residents
-                </>
-              )}
-            </p>
-          </Link>
-        ) : (
-          <Link
-            href="/subscription"
-            aria-label="View subscription"
-            className="mx-auto flex h-10 w-10 items-center justify-center rounded-lg bg-white/5 text-xs font-bold text-brand hover:bg-white/10"
-          >
-            {user.subscription.plan.slice(0, 2)}
-          </Link>
-        )}
+      {user.role === "HOSTEL_OWNER" && (
+        <div className="shrink-0 border-t border-white/10 p-3">
+          {!collapsed ? (
+            <Link
+              href="/subscription"
+              className="block rounded-lg bg-white/5 p-3 transition-colors hover:bg-white/10"
+            >
+              <p className="text-[11px] font-medium uppercase tracking-wide text-neutral-400">
+                Current plan
+              </p>
+              <p className="mt-0.5 flex items-center gap-1.5 text-sm font-bold text-white">
+                <span className="inline-block h-2 w-2 rounded-full bg-brand" />
+                {user.subscription.plan}
+              </p>
+              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10">
+                <div
+                  className="h-full rounded-full bg-brand transition-all duration-500"
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+              <p className="mt-1.5 text-xs text-neutral-400">
+                {unlimited ? (
+                  <>Unlimited residents{used > 0 ? ` · ${used} in-house` : ""}</>
+                ) : (
+                  <>
+                    {used} / {limit} residents
+                  </>
+                )}
+              </p>
+            </Link>
+          ) : (
+            <Link
+              href="/subscription"
+              aria-label="View subscription"
+              className="mx-auto flex h-10 w-10 items-center justify-center rounded-lg bg-white/5 text-xs font-bold text-brand hover:bg-white/10"
+            >
+              {user.subscription.plan.slice(0, 2)}
+            </Link>
+          )}
+        </div>
+      )}
+      <div className={cn("p-3", user.role === "HOSTEL_OWNER" ? "pt-0" : "border-t border-white/10")}>
         <div
           className={cn(
-            "mt-2 flex items-center gap-2.5 rounded-lg p-1.5",
+            "flex items-center gap-2.5 rounded-lg p-1.5",
             collapsed && "justify-center"
           )}
         >

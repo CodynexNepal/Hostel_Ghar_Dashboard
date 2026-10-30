@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Facility, Fee, HostelDetail, LeaveRequest, LeaveType } from "@/lib/api-types";
 import { hostelGhar, normalizeFacility, toPaginated, unwrap } from "@/lib/hostelGhar";
-import { getHostelId, toApiError, type ApiErrorShape } from "@/lib/axios";
+import { getHostelId, setHostelId as setHostelCookie, toApiError, type ApiErrorShape } from "@/lib/axios";
 import { useAuth } from "@/hooks/useAuth";
 
 export interface ResidentRoomRow {
@@ -32,7 +32,7 @@ export function normalizeResidentRoom(raw: unknown): ResidentRoomRow {
     const value = str(v);
     const markdownMatch = value.match(/\[([^\]]+)\]/);
     const email = markdownMatch?.[1] ?? value;
-    return email.replace(/^https?:\/\//i, "").replace(/^www\./i, "");
+    return email.replace(/^https?:\/\//i, "").replace(/^www\./i, "").trim().toLowerCase();
   };
   const num = (v: unknown, fb = 0): number => {
     const n = typeof v === "string" ? Number(v) : (v as number);
@@ -46,32 +46,36 @@ export function normalizeResidentRoom(raw: unknown): ResidentRoomRow {
     return undefined;
   };
   const hostelObj = (pick("hostel") ?? null) as ResidentRoomRow["hostel"];
-  const floor = num(pick("floor", "flat", "floorNumber"), 0);
-  const flatRaw = pick("flat");
+  const roomObj = (pick("room") ?? null) as Record<string, unknown> | null;
+  const userObj = (pick("user") ?? null) as Record<string, unknown> | null;
+  const floor = num(pick("floor", "flat", "floorNumber") ?? roomObj?.floor ?? roomObj?.flat, 0);
+  const flatRaw = pick("flat") ?? roomObj?.flat;
   const flat = flatRaw !== undefined ? num(flatRaw, floor) : floor;
   return {
     id: str(pick("id", "_id", "residentId")),
-    fullName: str(pick("fullName", "full_name", "name", "residentName")) || "Resident",
-    email: cleanEmail(pick("email", "residentEmail")),
+    fullName: str(pick("fullName", "full_name", "name", "residentName") ?? userObj?.name) || "Resident",
+    email: cleanEmail(pick("email", "residentEmail") ?? userObj?.email),
     hostelId: str(pick("hostelId", "hostel_id") ?? (hostelObj as { id?: unknown } | null)?.id),
     hostelName:
       str(pick("hostelName", "hostel_name")) || str((hostelObj as { name?: unknown } | null)?.name),
     hostel: hostelObj,
-    roomNumber: str(pick("roomNumber", "room_number", "roomNo", "room")),
+    roomNumber: str(pick("roomNumber", "room_number", "roomNo", "room") ?? roomObj?.roomNumber),
     bedNumber: str(pick("bedNumber", "bed_number", "bedNo", "bed")),
-    roomType: str(pick("roomType", "room_type", "type"), "") || undefined,
+    roomType: str(pick("roomType", "room_type", "type") ?? roomObj?.type, "") || undefined,
     floor,
     flat,
     monthlyRent: (() => {
-      const v = pick("monthlyRent", "monthly_rent", "rent");
+      const v = pick("monthlyRent", "monthly_rent", "rent") ?? roomObj?.monthlyRent;
       if (v === undefined) return undefined;
       const n = num(v, NaN);
       return Number.isFinite(n) ? n : undefined;
     })(),
-    phone: str(pick("phone", "phoneNumber"), "") || undefined,
-    joinedDate: str(pick("joinedDate", "joined_date"), "") || undefined,
+    phone: str(pick("phone", "phoneNumber") ?? userObj?.phone, "") || undefined,
+    joinedDate: str(pick("joinedDate", "joined_date", "createdAt", "created_at"), "") || undefined,
     imageUrl:
-      (pick("imageUrl", "image_url", "avatarUrl", "photoUrl") as string | null | undefined) ?? null,
+      (pick("imageUrl", "image_url", "avatarUrl", "photoUrl") as string | null | undefined) ??
+      (roomObj?.imageUrl as string | null | undefined) ??
+      null,
     fee: pick("fee"),
   };
 }
@@ -84,24 +88,61 @@ interface AsyncState<T> {
 
 export function useResolvedHostelId() {
   const { user } = useAuth();
-  const [hostelId, setHostelId] = useState<string | null>(user?.hostelId ?? getHostelId());
+  const [hostelId, setHostelIdState] = useState<string | null>(() => {
+    if (user?.role === "RESIDENT") {
+      return user?.hostelId ?? null;
+    }
+    return user?.hostelId ?? getHostelId();
+  });
   const [isResolving, setIsResolving] = useState(!hostelId);
+
   useEffect(() => {
+    let cancelled = false;
+
+    // For a RESIDENT: never resolve from arbitrary hostels or stale owner cookies.
+    // Must come from user.hostelId or the authenticated resident's profile.
+    if (user?.role === "RESIDENT") {
+      if (user?.hostelId) {
+        setHostelIdState(user.hostelId);
+        setIsResolving(false);
+        return;
+      }
+      setIsResolving(true);
+      (async () => {
+        try {
+          const res = await hostelGhar.resident.me();
+          const raw = unwrap<Record<string, unknown>>(res.data);
+          const hostelObj = (raw?.hostel ?? {}) as Record<string, unknown>;
+          const hid = (hostelObj.id as string) || (raw?.hostelId as string) || null;
+          if (!cancelled) {
+            setHostelIdState(hid);
+            if (hid) setHostelCookie(hid);
+          }
+        } catch {
+          if (!cancelled) setHostelIdState(null);
+        } finally {
+          if (!cancelled) setIsResolving(false);
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }
+
     const fromSession = user?.hostelId ?? getHostelId();
     if (fromSession) {
-      setHostelId(fromSession);
+      setHostelIdState(fromSession);
       setIsResolving(false);
       return;
     }
-    let cancelled = false;
+    setIsResolving(true);
     (async () => {
-      setIsResolving(true);
       try {
         const res = await hostelGhar.hostels.list({ limit: 1 });
         const items = toPaginated<HostelDetail>(res.data).items;
-        if (!cancelled) setHostelId(items[0]?.id ?? null);
+        if (!cancelled) setHostelIdState(items[0]?.id ?? null);
       } catch {
-        if (!cancelled) setHostelId(null);
+        if (!cancelled) setHostelIdState(null);
       } finally {
         if (!cancelled) setIsResolving(false);
       }
@@ -109,7 +150,8 @@ export function useResolvedHostelId() {
     return () => {
       cancelled = true;
     };
-  }, [user?.hostelId]);
+  }, [user?.role, user?.hostelId]);
+
   return { hostelId, isResolving };
 }
 
@@ -265,31 +307,58 @@ export function useMyResidence(hostelId?: string | null) {
   const [state, setState] = useState<AsyncState<ResidentRoomRow | null> & { forbidden: boolean }>({
     data: null,
     error: null,
-    isLoading: Boolean(hostelId),
+    isLoading: true,
     forbidden: false,
   });
   const load = useCallback(async () => {
-    if (!hostelId) {
-      setState({ data: null, error: null, isLoading: false, forbidden: false });
-      return null;
-    }
     setState((s) => ({ ...s, isLoading: true, error: null }));
+
+    // 1. Primary: Use dedicated resident profile endpoint (works for all RESIDENT users)
     try {
-      const res = await hostelGhar.hostels.residents(hostelId);
-      const rows = toPaginated<unknown>(res.data).items.map(normalizeResidentRoom);
-      const mine =
-        rows.find(
-          (rr) =>
-            (user?.id && rr.id === user.id) ||
-            (user?.email && rr.email.toLowerCase() === user.email.toLowerCase())
-        ) ?? (rows.length === 1 ? rows[0] : null);
-      setState({ data: mine, error: null, isLoading: false, forbidden: false });
-      return mine;
-    } catch (err) {
-      const error = toApiError(err);
-      setState({ data: null, error, isLoading: false, forbidden: error.status === 403 });
-      return null;
+      const res = await hostelGhar.resident.me();
+      const raw = unwrap<unknown>(res.data);
+      if (raw && typeof raw === "object") {
+        const row = normalizeResidentRoom(raw);
+        if (row.id || row.hostelId || row.roomNumber) {
+          if (row.hostelId) {
+            setHostelCookie(row.hostelId);
+          }
+          setState({ data: row, error: null, isLoading: false, forbidden: false });
+          return row;
+        }
+      }
+    } catch (meErr) {
+      const error = toApiError(meErr);
+      if (error.status === 401) {
+        setState({ data: null, error, isLoading: false, forbidden: true });
+        return null;
+      }
     }
+
+    // 2. Fallback: If hostelId is provided (e.g. owner previewing resident view)
+    if (hostelId) {
+      try {
+        const res = await hostelGhar.hostels.residents(hostelId);
+        const rows = toPaginated<unknown>(res.data).items.map(normalizeResidentRoom);
+        const cleanEmail = (e?: string) =>
+          (e ?? "").replace(/^https?:\/\//i, "").replace(/^www\./i, "").trim().toLowerCase();
+        const mine =
+          rows.find(
+            (rr) =>
+              (user?.id && rr.id === user.id) ||
+              (user?.email && cleanEmail(rr.email) === cleanEmail(user.email))
+          ) ?? (rows.length === 1 ? rows[0] : null);
+        setState({ data: mine, error: null, isLoading: false, forbidden: false });
+        return mine;
+      } catch (err) {
+        const error = toApiError(err);
+        setState({ data: null, error, isLoading: false, forbidden: error.status === 403 });
+        return null;
+      }
+    }
+
+    setState({ data: null, error: null, isLoading: false, forbidden: false });
+    return null;
   }, [hostelId, user?.id, user?.email]);
   useEffect(() => {
     load();

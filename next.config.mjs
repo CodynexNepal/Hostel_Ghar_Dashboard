@@ -19,6 +19,15 @@ const nextConfig = {
       },
     ],
   },
+  async redirects() {
+    return [
+      {
+        source: "/register",
+        destination: "/login",
+        permanent: false,
+      },
+    ];
+  },
   async rewrites() {
     const backendApiUrl = process.env.NEXT_BACKEND_API_URL ?? "https://api.hostelghar.com/api";
 

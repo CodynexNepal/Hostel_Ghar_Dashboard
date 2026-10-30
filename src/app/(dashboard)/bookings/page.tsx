@@ -21,7 +21,6 @@ import {
   AlertCircle,
   MapPin,
   RefreshCw,
-  ExternalLink,
 } from "lucide-react";
 import { DashboardShell } from "@/components/layout/DashboardShell";
 import { Protected } from "@/components/common/Protected";
@@ -360,12 +359,6 @@ export default function OwnerBookingsPage() {
             </div>
 
             <div className="flex items-center gap-2">
-              <Link href="/book" target="_blank">
-                <Button variant="outline" size="sm" className="gap-1.5 text-xs font-medium">
-                  <ExternalLink size={14} />
-                  Public Booking Portal
-                </Button>
-              </Link>
               <Button
                 variant="ghost"
                 size="icon"
@@ -523,15 +516,7 @@ export default function OwnerBookingsPage() {
                   description={
                     searchQuery || statusFilter !== "ALL"
                       ? "No bookings match your current search or status filters."
-                      : `No booking requests have been submitted for ${activeHostel?.name || "this hostel"} yet. When a user creates a booking via POST /bookings, it will appear here.`
-                  }
-                  action={
-                    <Link href="/book" target="_blank">
-                      <Button variant="primary" size="sm" className="gap-1.5">
-                        <ExternalLink size={15} />
-                        Open User Booking Page
-                      </Button>
-                    </Link>
+                      : `No booking requests have been submitted for ${activeHostel?.name || "this hostel"} yet. When a booking is submitted, it will appear here.`
                   }
                 />
               </div>

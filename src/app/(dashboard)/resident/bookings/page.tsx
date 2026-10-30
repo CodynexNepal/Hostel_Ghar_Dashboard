@@ -12,7 +12,6 @@ import {
   Calendar,
   Trash2,
   RefreshCw,
-  ExternalLink,
 } from "lucide-react";
 import { DashboardShell } from "@/components/layout/DashboardShell";
 import { Protected } from "@/components/common/Protected";
@@ -72,22 +71,22 @@ export default function ResidentBookingsPage() {
   }, [loadMyBookings]);
 
   // Load Hostels list for booking dropdown
-  const loadHostels = async () => {
+  const loadHostels = useCallback(async () => {
     try {
       const res = await hostelGhar.hostels.list({ limit: 50 });
       const items = toPaginated<Hostel>(res.data).items;
       setHostels(items);
-      if (items.length > 0 && !selectedHostelId) {
-        setSelectedHostelId(items[0].id);
+      if (items.length > 0) {
+        setSelectedHostelId((current) => current || items[0].id);
       }
     } catch {
       // ignore
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadHostels();
-  }, []);
+  }, [loadHostels]);
 
   // 2. Create Booking: POST /bookings
   const handleCreateBooking = async (e: React.FormEvent) => {

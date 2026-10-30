@@ -26,6 +26,11 @@ const nextConfig = {
         destination: "/login",
         permanent: false,
       },
+      {
+        source: "/book",
+        destination: "/login",
+        permanent: false,
+      },
     ];
   },
   async rewrites() {

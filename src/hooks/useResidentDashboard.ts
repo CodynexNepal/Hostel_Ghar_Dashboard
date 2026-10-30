@@ -2,7 +2,12 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Facility, Fee, HostelDetail, LeaveRequest, LeaveType } from "@/lib/api-types";
 import { hostelGhar, normalizeFacility, toPaginated, unwrap } from "@/lib/hostelGhar";
-import { getHostelId, setHostelId as setHostelCookie, toApiError, type ApiErrorShape } from "@/lib/axios";
+import {
+  getHostelId,
+  setHostelId as setHostelCookie,
+  toApiError,
+  type ApiErrorShape,
+} from "@/lib/axios";
 import { useAuth } from "@/hooks/useAuth";
 
 export interface ResidentRoomRow {
@@ -32,7 +37,11 @@ export function normalizeResidentRoom(raw: unknown): ResidentRoomRow {
     const value = str(v);
     const markdownMatch = value.match(/\[([^\]]+)\]/);
     const email = markdownMatch?.[1] ?? value;
-    return email.replace(/^https?:\/\//i, "").replace(/^www\./i, "").trim().toLowerCase();
+    return email
+      .replace(/^https?:\/\//i, "")
+      .replace(/^www\./i, "")
+      .trim()
+      .toLowerCase();
   };
   const num = (v: unknown, fb = 0): number => {
     const n = typeof v === "string" ? Number(v) : (v as number);
@@ -53,7 +62,8 @@ export function normalizeResidentRoom(raw: unknown): ResidentRoomRow {
   const flat = flatRaw !== undefined ? num(flatRaw, floor) : floor;
   return {
     id: str(pick("id", "_id", "residentId")),
-    fullName: str(pick("fullName", "full_name", "name", "residentName") ?? userObj?.name) || "Resident",
+    fullName:
+      str(pick("fullName", "full_name", "name", "residentName") ?? userObj?.name) || "Resident",
     email: cleanEmail(pick("email", "residentEmail") ?? userObj?.email),
     hostelId: str(pick("hostelId", "hostel_id") ?? (hostelObj as { id?: unknown } | null)?.id),
     hostelName:
@@ -341,7 +351,11 @@ export function useMyResidence(hostelId?: string | null) {
         const res = await hostelGhar.hostels.residents(hostelId);
         const rows = toPaginated<unknown>(res.data).items.map(normalizeResidentRoom);
         const cleanEmail = (e?: string) =>
-          (e ?? "").replace(/^https?:\/\//i, "").replace(/^www\./i, "").trim().toLowerCase();
+          (e ?? "")
+            .replace(/^https?:\/\//i, "")
+            .replace(/^www\./i, "")
+            .trim()
+            .toLowerCase();
         const mine =
           rows.find(
             (rr) =>

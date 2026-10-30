@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
 import { AuthProvider } from "@/hooks/useAuth";
+import { NotificationProvider } from "@/context/NotificationContext";
 import { SidebarProvider } from "@/hooks/useSidebar";
 import { UpgradeProvider } from "@/hooks/useUpgrade";
 import { ToastProvider } from "@/hooks/useToast";
@@ -38,16 +39,18 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className={spaceGrotesk.variable}>
       <body className="font-sans">
         <AuthProvider>
-          <SidebarProvider>
-            <UpgradeProvider>
-              <ToastProvider>
-                {children}
-                <UpgradeModal />
-                <LogoutDialog />
-                <Toaster />
-              </ToastProvider>
-            </UpgradeProvider>
-          </SidebarProvider>
+          <NotificationProvider>
+            <SidebarProvider>
+              <UpgradeProvider>
+                <ToastProvider>
+                  {children}
+                  <UpgradeModal />
+                  <LogoutDialog />
+                  <Toaster />
+                </ToastProvider>
+              </UpgradeProvider>
+            </SidebarProvider>
+          </NotificationProvider>
         </AuthProvider>
       </body>
     </html>

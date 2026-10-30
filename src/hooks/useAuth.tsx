@@ -430,9 +430,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           body?.accessToken ??
           (nestedData?.token as string | undefined) ??
           (nestedData?.accessToken as string | undefined);
-        let rawUser =
-          body?.user ??
-          nestedData?.user;
+        let rawUser = body?.user ?? nestedData?.user;
         if (token) setToken(token);
         else clearToken();
         const tokenRole = roleFromToken(token);

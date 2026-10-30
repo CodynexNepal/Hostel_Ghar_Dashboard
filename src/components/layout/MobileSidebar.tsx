@@ -9,6 +9,9 @@ import { useAuth } from "@/hooks/useAuth";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useSidebar } from "@/hooks/useSidebar";
 import { useUpgrade } from "@/hooks/useUpgrade";
+import { useUnreadCounts } from "@/context/NotificationContext";
+import { NotificationBadge } from "@/components/notifications/NotificationBadge";
+import { getCategoryForNavItem } from "@/lib/nav-badges";
 import { cn } from "@/lib/utils";
 
 export function MobileSidebar() {
@@ -16,6 +19,7 @@ export function MobileSidebar() {
   const { canAccess, isPlanLoading } = usePermissions();
   const { mobileOpen, setMobileOpen } = useSidebar();
   const { openUpgrade } = useUpgrade();
+  const { byCategory, markCategoryAsRead } = useUnreadCounts();
   const pathname = usePathname();
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
     Hostel: true,
@@ -78,6 +82,14 @@ export function MobileSidebar() {
               const allowed = isPlanLoading ? true : canAccess(item.permission);
               if (item.children?.length) {
                 const open = openGroups[item.label] ?? true;
+                const parentCategory = getCategoryForNavItem(item.label, item.href);
+                const directCount = parentCategory ? (byCategory[parentCategory] ?? 0) : 0;
+                const childrenCount = item.children.reduce((sum, child) => {
+                  const cat = getCategoryForNavItem(child.label, child.href);
+                  return sum + (cat ? (byCategory[cat] ?? 0) : 0);
+                }, 0);
+                const totalCount = Math.max(directCount, childrenCount);
+
                 return (
                   <li key={item.label}>
                     <button
@@ -86,7 +98,10 @@ export function MobileSidebar() {
                       className="flex h-10 w-full items-center gap-3 rounded-md px-3 text-sm font-medium text-neutral-300 hover:bg-white/5"
                     >
                       <Icon className="h-[18px] w-[18px]" />{" "}
-                      <span className="flex-1 text-left">{item.label}</span>
+                      <span className="flex-1 truncate text-left">{item.label}</span>
+                      {totalCount > 0 && (
+                        <NotificationBadge count={totalCount} max={99} size="sm" className="mr-1" />
+                      )}
                       <ChevronDown
                         className={cn("h-4 w-4 transition-transform", open ? "" : "-rotate-90")}
                       />
@@ -95,6 +110,9 @@ export function MobileSidebar() {
                       <ul className="ml-5 mt-1 space-y-0.5 border-l border-white/10 pl-3">
                         {item.children.map((c) => {
                           const ok = isPlanLoading ? true : canAccess(c.permission);
+                          const childCat = getCategoryForNavItem(c.label, c.href);
+                          const childCount = childCat ? (byCategory[childCat] ?? 0) : 0;
+
                           if (!ok)
                             return (
                               <li key={c.label}>
@@ -114,15 +132,21 @@ export function MobileSidebar() {
                             <li key={c.label}>
                               <Link
                                 href={c.href}
-                                onClick={() => setMobileOpen(false)}
+                                onClick={() => {
+                                  if (childCat) markCategoryAsRead(childCat);
+                                  setMobileOpen(false);
+                                }}
                                 className={cn(
-                                  "block truncate rounded-md px-2.5 py-2 text-[13px]",
+                                  "flex items-center justify-between gap-2 rounded-md px-2.5 py-2 text-[13px]",
                                   pathname === c.href
                                     ? "bg-brand font-semibold text-brand-ink"
                                     : "text-neutral-400"
                                 )}
                               >
-                                {c.label}
+                                <span className="truncate">{c.label}</span>
+                                {childCount > 0 && (
+                                  <NotificationBadge count={childCount} max={9} size="sm" />
+                                )}
                               </Link>
                             </li>
                           );
@@ -148,21 +172,32 @@ export function MobileSidebar() {
                     </button>
                   </li>
                 );
+
+              const singleCat = getCategoryForNavItem(item.label, item.href);
+              const singleCount = singleCat ? (byCategory[singleCat] ?? 0) : 0;
+
               return (
                 <li key={item.label}>
                   <Link
                     href={item.href!}
-                    onClick={() => setMobileOpen(false)}
+                    onClick={() => {
+                      if (singleCat) markCategoryAsRead(singleCat);
+                      setMobileOpen(false);
+                    }}
                     className={cn(
-                      "flex h-10 items-center gap-3 rounded-md px-3 text-sm font-medium",
+                      "flex h-10 items-center justify-between gap-3 rounded-md px-3 text-sm font-medium",
                       pathname === item.href
                         ? "bg-brand font-semibold text-brand-ink"
                         : "text-neutral-300"
                     )}
                   >
-                    {" "}
-                    <Icon className="h-[18px] w-[18px]" />
-                    {item.label}
+                    <span className="flex items-center gap-3 truncate">
+                      <Icon className="h-[18px] w-[18px]" />
+                      {item.label}
+                    </span>
+                    {singleCount > 0 && (
+                      <NotificationBadge count={singleCount} max={99} size="sm" />
+                    )}
                   </Link>
                 </li>
               );

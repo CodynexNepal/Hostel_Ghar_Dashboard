@@ -165,7 +165,9 @@ export function Sidebar() {
           )}
         </div>
       )}
-      <div className={cn("p-3", user.role === "HOSTEL_OWNER" ? "pt-0" : "border-t border-white/10")}>
+      <div
+        className={cn("p-3", user.role === "HOSTEL_OWNER" ? "pt-0" : "border-t border-white/10")}
+      >
         <div
           className={cn(
             "flex items-center gap-2.5 rounded-lg p-1.5",

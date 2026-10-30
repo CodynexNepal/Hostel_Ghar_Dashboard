@@ -93,7 +93,9 @@ export default function OwnerBookingsPage() {
 
     try {
       const formHostelsRes = await hostelGhar.owner.residentFormHostels();
-      const formItems = toPaginated<{ id: string; name: string }>(unwrap(formHostelsRes.data)).items;
+      const formItems = toPaginated<{ id: string; name: string }>(
+        unwrap(formHostelsRes.data)
+      ).items;
       formItems.forEach((h) => {
         const hid = validHostelId(h.id);
         if (hid) discoveredIds.add(hid);

@@ -1,9 +1,11 @@
 "use client";
 import { useState } from "react";
 import Link from "next/link";
-import { Bell, ChevronsLeft, ChevronsRight, Crown, Menu, Search } from "lucide-react";
+import { ChevronsLeft, ChevronsRight, Crown, Menu, Search } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useSidebar } from "@/hooks/useSidebar";
+import { NotificationBell } from "@/components/notifications/NotificationBell";
+import { GlobalSearch } from "@/components/search/GlobalSearch";
 import { initials } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 
@@ -38,6 +40,8 @@ export function Header({ title, subtitle }: { title: string; subtitle?: string }
             <p className="hidden truncate text-[13px] text-neutral-500 sm:block">{subtitle}</p>
           )}
         </div>
+
+        {/* Mobile Search Toggle */}
         <button
           onClick={() => setShowSearch((s) => !s)}
           aria-label="Search"
@@ -45,26 +49,15 @@ export function Header({ title, subtitle }: { title: string; subtitle?: string }
         >
           <Search className="h-5 w-5" />
         </button>
-        <div className="relative hidden sm:block sm:w-56 lg:w-72">
-          <Search
-            className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400"
-            aria-hidden
-          />
-          <input
-            aria-label="Search"
-            placeholder="Search residents, rooms…"
-            className="h-10 w-full rounded-md border border-surface-border bg-surface-muted pl-9 pr-3 text-sm outline-none placeholder:text-neutral-400 focus:border-brand-ink focus:bg-white"
-          />
+
+        {/* Global Desktop Search with Real Data & Keyboard Navigation */}
+        <div className="hidden sm:block sm:w-64 lg:w-80">
+          <GlobalSearch />
         </div>
-        <button
-          aria-label="Notifications, 3 unread"
-          className="relative rounded-md p-2 text-neutral-600 hover:bg-neutral-100"
-        >
-          <Bell className="h-5 w-5" />
-          <span className="absolute right-1.5 top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-brand-ink text-[10px] font-bold text-brand">
-            3
-          </span>
-        </button>
+
+        {/* Real-Time Notification Bell with Facebook-style Badges & Dropdown */}
+        <NotificationBell />
+
         {user && (
           <div className="flex items-center gap-2">
             {isOwner && (
@@ -96,14 +89,11 @@ export function Header({ title, subtitle }: { title: string; subtitle?: string }
           </div>
         )}
       </div>
+
+      {/* Mobile Search Dropdown Form */}
       {showSearch && (
-        <div className="border-t border-surface-border px-4 py-2 sm:hidden">
-          <input
-            aria-label="Search"
-            autoFocus
-            placeholder="Search residents, rooms…"
-            className="h-10 w-full rounded-md border border-surface-border bg-surface-muted px-3 text-sm outline-none focus:border-brand-ink focus:bg-white"
-          />
+        <div className="border-t border-surface-border bg-neutral-50 px-4 py-2 sm:hidden">
+          <GlobalSearch mobile onClose={() => setShowSearch(false)} />
         </div>
       )}
     </header>

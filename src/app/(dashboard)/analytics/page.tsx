@@ -85,7 +85,7 @@ function ExecutiveSpotlight({ base }: { base: AnalyticsBase }) {
 
           <div className="flex items-center gap-2">
             <span className="inline-flex items-center gap-2 rounded-full bg-emerald-950/80 px-3 py-1 text-xs font-semibold text-emerald-400 ring-1 ring-emerald-500/30">
-              <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" />
               Live Telemetry
             </span>
           </div>
@@ -371,8 +371,11 @@ export default function AnalyticsPage() {
             const ledgerPending = liveFees.length > 0 ? totalPending(liveFees) : 0;
             const trendPending = trendBilled > 0 ? Math.max(0, trendBilled - trendCollected) : 0;
             const apiPending =
-              Number(s?.pendingAmount ?? s?.pendingDues ?? d?.pendingAmount ?? d?.pendingPayments) || 0;
-            const resolvedPendingAmount = ledgerPending > 0 ? ledgerPending : (trendPending || apiPending);
+              Number(
+                s?.pendingAmount ?? s?.pendingDues ?? d?.pendingAmount ?? d?.pendingPayments
+              ) || 0;
+            const resolvedPendingAmount =
+              ledgerPending > 0 ? ledgerPending : trendPending || apiPending;
 
             // 4. Monthly Expenses calculations
             const expMonths = groupExpensesByMonth(liveExpenses);
@@ -409,7 +412,8 @@ export default function AnalyticsPage() {
               ),
               liveTrend,
               hasRevenueTrend: (liveTrend?.length ?? 0) > 0,
-              feeCounts: s?.feeCounts ?? (liveFees.length > 0 ? deriveFeeCounts(liveFees) : undefined),
+              feeCounts:
+                s?.feeCounts ?? (liveFees.length > 0 ? deriveFeeCounts(liveFees) : undefined),
               occupancyRate:
                 s?.occupancyRate ??
                 s?.occupancy ??
@@ -547,7 +551,7 @@ function AnalyticsBody({
                 className={cn(
                   "flex items-center gap-2 whitespace-nowrap rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all",
                   active
-                    ? "bg-white text-neutral-900 shadow-xs ring-1 ring-black/5"
+                    ? "shadow-xs bg-white text-neutral-900 ring-1 ring-black/5"
                     : "text-neutral-600 hover:bg-white/60 hover:text-neutral-900"
                 )}
               >

@@ -1465,3 +1465,71 @@ export interface UpdateHostelLocationPayload {
   longitude?: number | null;
   isLocationShared: boolean;
 }
+
+/* ---------------- Real-Time Notifications & Activity Tracking ---------------- */
+export interface AppNotification {
+  id: string;
+  userId: string;
+  hostelId: string | null;
+  type: string;
+  title: string;
+  message: string;
+  entityType: string;
+  entityId: string | null;
+  targetUrl: string | null;
+  metadata: Record<string, any> | null;
+  isRead: boolean;
+  readAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface NotificationCounts {
+  total: number;
+  byCategory: {
+    booking?: number;
+    bookings?: number;
+    resident?: number;
+    residents?: number;
+    payment?: number;
+    payments?: number;
+    complaint?: number;
+    complaints?: number;
+    hostel?: number;
+    hostels?: number;
+    user?: number;
+    users?: number;
+    subscription?: number;
+    subscriptions?: number;
+    meal?: number;
+    meals?: number;
+    announcement?: number;
+    announcements?: number;
+    system?: number;
+    [key: string]: number | undefined;
+  };
+}
+
+export interface NotificationListParams extends ListParams {
+  isRead?: boolean;
+  entityType?: string;
+  hostelId?: string;
+}
+
+/* ---------------- Global Search ---------------- */
+export interface SearchResultItem {
+  id: string;
+  title: string;
+  subtitle: string;
+  category: "residents" | "bookings" | "payments" | "hostels" | "users" | "rooms" | "notifications";
+  url: string;
+  badge?: string;
+  metadata?: Record<string, any>;
+}
+
+export interface GlobalSearchResponse {
+  query: string;
+  total: number;
+  categories: Record<string, number>;
+  results: SearchResultItem[];
+}

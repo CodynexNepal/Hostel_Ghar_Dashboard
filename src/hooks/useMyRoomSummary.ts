@@ -39,7 +39,16 @@ export function useMyRoomSummary() {
       retry,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [activeHostelId, hostelName, roomLabel, myRoom, hostel.data, residence.forbidden, isLoading, error]
+    [
+      activeHostelId,
+      hostelName,
+      roomLabel,
+      myRoom,
+      hostel.data,
+      residence.forbidden,
+      isLoading,
+      error,
+    ]
   );
   return summary;
 }

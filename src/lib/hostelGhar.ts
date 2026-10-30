@@ -102,6 +102,11 @@ import type {
   DailyMealSchedule,
   HostelLocation,
   UpdateHostelLocationPayload,
+  AppNotification,
+  NotificationCounts,
+  NotificationListParams,
+  GlobalSearchResponse,
+  SearchResultItem,
 } from "./api-types";
 import type { Hostel, Room } from "../types/hostel";
 import type { Resident } from "../types/resident";
@@ -3629,6 +3634,55 @@ export const hostelGhar = {
         `${PREFIX}/hostels/${encodeURIComponent(hostelId)}/location`,
         payload
       ),
+  },
+
+  notifications: {
+    /** GET /notifications — list paginated notifications with optional filters. */
+    list: (params?: NotificationListParams) =>
+      getWithRetry<ApiEnvelope<AppNotification[]> & { meta?: PaginationMeta }>(
+        `${PREFIX}/notifications`,
+        params
+      ),
+    /** GET /notifications/unread-count — get overall unread count. */
+    unreadCount: (hostelId?: string) =>
+      getWithRetry<ApiEnvelope<{ count: number }>>(`${PREFIX}/notifications/unread-count`, {
+        hostelId: validHostelId(hostelId),
+      }),
+    /** GET /notifications/unread-counts — get total and byCategory unread breakdown. */
+    unreadCounts: (hostelId?: string) =>
+      getWithRetry<ApiEnvelope<NotificationCounts>>(`${PREFIX}/notifications/unread-counts`, {
+        hostelId: validHostelId(hostelId),
+      }),
+    /** PATCH /notifications/:id/read — mark single notification as read. */
+    markAsRead: (id: string) =>
+      api.patch<ApiEnvelope<AppNotification>>(
+        `${PREFIX}/notifications/${encodeURIComponent(id)}/read`
+      ),
+    /** PATCH /notifications/read-all — mark all (or by entityType/category) as read. */
+    markAllAsRead: (params?: { entityType?: string; hostelId?: string }) =>
+      api.patch<ApiEnvelope<{ updatedCount: number; counts: NotificationCounts }>>(
+        `${PREFIX}/notifications/read-all`,
+        {
+          entityType: params?.entityType,
+          hostelId: validHostelId(params?.hostelId),
+        }
+      ),
+    /** DELETE /notifications/:id — delete a notification. */
+    delete: (id: string) =>
+      api.delete<ApiEnvelope<{ success: boolean }>>(
+        `${PREFIX}/notifications/${encodeURIComponent(id)}`
+      ),
+  },
+
+  search: {
+    /** GET /search?q=... — unified role-aware global search. */
+    query: (q: string, category?: string, limit?: number, hostelId?: string) =>
+      getWithRetry<ApiEnvelope<GlobalSearchResponse>>(`${PREFIX}/search`, {
+        q,
+        category: category && category !== "all" ? category : undefined,
+        limit,
+        hostelId: validHostelId(hostelId),
+      }),
   },
 };
 

@@ -1,4 +1,6 @@
 "use client";
+
+import { useState } from "react";
 import Link from "next/link";
 import { Pencil, Trash2 } from "lucide-react";
 import { DashboardShell } from "@/components/layout/DashboardShell";
@@ -11,9 +13,10 @@ import { Card } from "@/components/ui/Card";
 import { FeatureGate } from "@/components/common/FeatureGate";
 import { ErrorState, EmptyState } from "@/components/ui/EmptyState";
 import { TableSkeleton } from "@/components/ui/Skeleton";
+import { EditResidentModal } from "@/components/residents/EditResidentModal";
+import { DeleteResidentModal } from "@/components/residents/DeleteResidentModal";
 import type { Resident } from "@/types/resident";
 import { formatDate, formatCurrency, initials } from "@/lib/utils";
-import { useToast } from "@/hooks/useToast";
 import { useAuth } from "@/hooks/useAuth";
 import { useApi } from "@/hooks/useApi";
 import { getHostelId } from "@/lib/axios";
@@ -102,8 +105,11 @@ const COLUMNS = (
 ];
 
 export default function ResidentsPage() {
-  const { success } = useToast();
   const { user } = useAuth();
+  const [editingResident, setEditingResident] = useState<Resident | null>(null);
+  const [deletingResident, setDeletingResident] = useState<Resident | null>(null);
+  const [activeHostelId, setActiveHostelId] = useState<string | null>(null);
+
   // GET /hostels/{id}/residents — access_token cookie is attached automatically
   // (withCredentials) on this request and every other request; when the cookie
   // is readable we also mirror it as `Authorization: Bearer …` in the interceptor.
@@ -115,6 +121,7 @@ export default function ResidentsPage() {
     refetch,
   } = useApi<Resident[]>(async () => {
     const hostelId = await resolveHostelId(user?.hostelId);
+    setActiveHostelId(hostelId);
     // GET /owner/residents — owner-scoped list across ALL owned hostels (same shape).
     // Falls back to the hostel-scoped list only when the owner endpoint is unavailable.
     try {
@@ -129,7 +136,9 @@ export default function ResidentsPage() {
     const raw = unwrap<unknown>(res.data);
     return toPaginated<unknown>(raw).items.map(normalizeResident);
   }, [user?.hostelId]);
+
   const rows = residents ?? [];
+
   return (
     <DashboardShell
       title="Residents"
@@ -163,28 +172,45 @@ export default function ResidentsPage() {
         ) : (
           <DataTable<Resident>
             columns={COLUMNS(
-              (r) => success("Edit opened", r.name),
-              (r) => {
-                success("Resident removed", r.name);
-                refetch();
-              }
+              (r) => setEditingResident(r),
+              (r) => setDeletingResident(r)
             )}
             rows={rows}
             rowKey={(r) => r.id}
             searchableKeys={["name", "phone", "roomNumber"]}
             searchPlaceholder="Search residents…"
             mobileCard={(r) => (
-              <div className="flex items-center gap-3">
-                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-surface-muted text-xs font-bold">
-                  {initials(r.name)}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-semibold">{r.name}</span>
-                  <span className="block text-xs text-neutral-500">
-                    Room {r.roomNumber} · {formatCurrency(r.monthlyRent)}
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-3">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface-muted text-xs font-bold">
+                    {initials(r.name)}
                   </span>
-                </span>
-                <Badge tone={statusTone(r.paymentStatus)}>{r.paymentStatus}</Badge>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-semibold">{r.name}</span>
+                    <span className="block text-xs text-neutral-500">
+                      Room {r.roomNumber} · {formatCurrency(r.monthlyRent)}
+                    </span>
+                  </span>
+                </div>
+                <div className="flex shrink-0 items-center gap-1">
+                  <Badge tone={statusTone(r.paymentStatus)}>{r.paymentStatus}</Badge>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    aria-label={`Edit ${r.name}`}
+                    onClick={() => setEditingResident(r)}
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    aria-label={`Remove ${r.name}`}
+                    onClick={() => setDeletingResident(r)}
+                  >
+                    <Trash2 className="h-4 w-4 text-red-600" />
+                  </Button>
+                </div>
               </div>
             )}
           />
@@ -199,6 +225,29 @@ export default function ResidentsPage() {
         <div className="mt-4 hidden">
           <BackLink href="/dashboard" label="Dashboard" />
         </div>
+
+        {/* Edit Resident Modal */}
+        <EditResidentModal
+          open={Boolean(editingResident)}
+          resident={editingResident}
+          hostelId={activeHostelId ?? user?.hostelId}
+          onClose={() => setEditingResident(null)}
+          onSuccess={() => {
+            setEditingResident(null);
+            refetch();
+          }}
+        />
+
+        {/* Delete Resident Confirmation Modal */}
+        <DeleteResidentModal
+          open={Boolean(deletingResident)}
+          resident={deletingResident}
+          onClose={() => setDeletingResident(null)}
+          onSuccess={() => {
+            setDeletingResident(null);
+            refetch();
+          }}
+        />
       </Protected>
     </DashboardShell>
   );

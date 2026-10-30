@@ -1,6 +1,6 @@
 import type { AuthUser, UserRole } from "@/types/auth";
 import type { Hostel, Room } from "@/types/hostel";
-import type { PaymentStatus, Resident } from "@/types/resident";
+import type { PaymentStatus, Resident, ResidentStatus } from "@/types/resident";
 
 /** Backend envelope: { data, message?, meta? } OR raw array/object. */
 export interface ApiEnvelope<T> {
@@ -117,6 +117,20 @@ export interface CreateResidentPayload {
   /** Optional — inherited from room inventory when omitted. */
   monthlyRent?: number;
   joinedDate?: string;
+}
+
+export interface UpdateResidentPayload {
+  name?: string;
+  email?: string;
+  phone?: string;
+  hostelId?: string;
+  flat?: number;
+  roomNumber?: string;
+  bedNumber?: string;
+  monthlyRent?: number;
+  joinedDate?: string;
+  status?: ResidentStatus;
+  paymentStatus?: PaymentStatus;
 }
 
 export interface ResidentDetail extends Resident {

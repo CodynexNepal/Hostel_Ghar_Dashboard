@@ -14,6 +14,7 @@ import type {
   CreateHostelPayload,
   CreateOwnerPayload,
   CreateResidentPayload,
+  UpdateResidentPayload,
   CreateLeaveTypePayload,
   CreateRoomPayload,
   Bed,
@@ -2945,6 +2946,51 @@ export const hostelGhar = {
       api.post<ResidentDetail>(`${PREFIX}/owner/residents`, payload, {
         headers: idemHeaders(newIdempotencyKey()),
       }),
+    /** PATCH /owner/residents/:id — update resident details with PUT/standard fallbacks. */
+    updateResident: async (id: string, payload: UpdateResidentPayload) => {
+      const headers = idemHeaders(newIdempotencyKey());
+      try {
+        return await api.patch<ResidentDetail | ApiEnvelope<ResidentDetail>>(
+          `${PREFIX}/owner/residents/${id}`,
+          payload,
+          { headers }
+        );
+      } catch {
+        try {
+          return await api.put<ResidentDetail | ApiEnvelope<ResidentDetail>>(
+            `${PREFIX}/owner/residents/${id}`,
+            payload,
+            { headers }
+          );
+        } catch {
+          try {
+            return await api.patch<ResidentDetail | ApiEnvelope<ResidentDetail>>(
+              `${PREFIX}/residents/${id}`,
+              payload,
+              { headers }
+            );
+          } catch {
+            return await api.put<ResidentDetail | ApiEnvelope<ResidentDetail>>(
+              `${PREFIX}/residents/${id}`,
+              payload,
+              { headers }
+            );
+          }
+        }
+      }
+    },
+    /** DELETE /owner/residents/:id — remove resident with standard endpoint fallback. */
+    deleteResident: async (id: string) => {
+      try {
+        return await api.delete<
+          { message?: string; success?: boolean } | ApiEnvelope<{ message?: string }>
+        >(`${PREFIX}/owner/residents/${id}`);
+      } catch {
+        return await api.delete<
+          { message?: string; success?: boolean } | ApiEnvelope<{ message?: string }>
+        >(`${PREFIX}/residents/${id}`);
+      }
+    },
     createLeaveType: (payload: CreateLeaveTypePayload) =>
       api.post<LeaveType | ApiEnvelope<LeaveType>>(`${PREFIX}/owner/leave-types`, payload, {
         headers: idemHeaders(newIdempotencyKey()),

@@ -158,8 +158,8 @@ export default function HostelLocationPage() {
 
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        const lat = parseFloat(pos.coords.latitude.toFixed(7));
-        const lng = parseFloat(pos.coords.longitude.toFixed(7));
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
         setStagedLat(String(lat));
         setStagedLng(String(lng));
         setShowConfirmBanner(true);
@@ -547,7 +547,7 @@ export default function HostelLocationPage() {
                               Coordinates
                             </span>
                             <span className="font-mono font-semibold text-neutral-800">
-                              {previewLat.toFixed(5)}, {previewLng.toFixed(5)}
+                              {previewLat}, {previewLng}
                             </span>
                           </div>
                           <div>

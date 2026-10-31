@@ -632,7 +632,7 @@ export default function AdminHostelsPage() {
                   <p className="font-mono text-xs text-neutral-700">
                     Coordinates:{" "}
                     <strong>
-                      {viewLocation.latitude.toFixed(6)}, {viewLocation.longitude.toFixed(6)}
+                      {viewLocation.latitude}, {viewLocation.longitude}
                     </strong>
                   </p>
                   <a

@@ -61,8 +61,8 @@ export default function ResidentAttendancePage() {
           success(isCheckIn ? "Already checked in" : "Already checked out", errMsg || undefined);
         } else {
           toastError(
-            isCheckIn ? "Could not check in" : "Could not check out",
-            errMsg || "Please check your connection and try again."
+            isCheckIn ? "Check-in failed" : "Check-out failed",
+            errMsg || "Please allow location/GPS access."
           );
         }
       } else {
@@ -71,8 +71,8 @@ export default function ResidentAttendancePage() {
           ? formatTimeOfDay(record.checkInAt)
           : formatTimeOfDay(record.checkOutAt || record.checkInAt);
         success(
-          isCheckIn ? "Checked in successfully" : "Checked out successfully",
-          isCheckIn ? `Check-in recorded at ${timeStr}.` : `Check-out recorded at ${timeStr}.`
+          isCheckIn ? "Checked in successfully!" : "Checked out successfully!",
+          isCheckIn ? `In at ${timeStr}.` : `Out at ${timeStr}.`
         );
         await refresh();
       }

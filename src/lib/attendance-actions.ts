@@ -27,11 +27,61 @@ export type AttendanceActionError = {
   message: string;
 };
 
+export interface GeolocationPositionCoords {
+  latitude: number;
+  longitude: number;
+  accuracy?: number;
+}
+
+/**
+ * Uses HTML5 Geolocation API with enableHighAccuracy: true before sending attendance requests.
+ * Forces phone GPS instead of Wi-Fi cache.
+ */
+export function getDeviceLocation(
+  action: "check-in" | "check-out"
+): Promise<GeolocationPositionCoords> {
+  return new Promise((resolve, reject) => {
+    if (typeof window === "undefined" || !navigator.geolocation) {
+      reject(new Error("Geolocation is not supported on this device/browser."));
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        resolve({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          accuracy: position.coords.accuracy,
+        });
+      },
+      () => {
+        const defaultMsg =
+          action === "check-in"
+            ? "Please allow location/GPS access to check in."
+            : "Please allow location/GPS access to check out.";
+        reject(new Error(defaultMsg));
+      },
+      {
+        enableHighAccuracy: true, // Forces phone GPS instead of Wi-Fi cache
+        timeout: 10000,
+        maximumAge: 0,
+      }
+    );
+  });
+}
+
 /** POST /resident/attendance/check-in body — `status` defaults to PRESENT. */
 export type AttendanceCheckInOptions = {
   /** Backend accepts PRESENT (default) or LATE. */
   status?: "PRESENT" | "LATE";
   note?: string;
+  latitude?: number;
+  longitude?: number;
+};
+
+export type AttendanceCheckOutOptions = {
+  note?: string;
+  latitude?: number;
+  longitude?: number;
 };
 
 type BackendAttempt =
@@ -156,13 +206,35 @@ export async function fetchBackendHostel(hostelId: string): Promise<AttendanceRe
 /**
  * Resident check-in: calls POST /v1/hostel-ghar/resident/attendance/check-in.
  * Pure backend integration with zero localStorage dependency.
+ * Enforces HTML5 Geolocation with enableHighAccuracy: true.
  */
 export async function checkIn(
   identity: AttendanceIdentity,
   options?: AttendanceCheckInOptions
 ): Promise<AttendanceRecord | AttendanceActionError> {
+  let latitude = options?.latitude;
+  let longitude = options?.longitude;
+
+  if (latitude === undefined || longitude === undefined) {
+    try {
+      const loc = await getDeviceLocation("check-in");
+      latitude = loc.latitude;
+      longitude = loc.longitude;
+    } catch (locErr) {
+      return {
+        reason: "FAILED",
+        message:
+          locErr instanceof Error
+            ? locErr.message
+            : "Please allow location/GPS access to check in.",
+      };
+    }
+  }
+
   const body: Record<string, unknown> = {
     status: options?.status === "LATE" ? "LATE" : "PRESENT",
+    latitude,
+    longitude,
   };
   const hostelId = identity.hostelId ?? getHostelId();
   if (hostelId) body.hostelId = hostelId;
@@ -223,12 +295,35 @@ export async function checkIn(
 /**
  * Resident check-out: calls POST /v1/hostel-ghar/resident/attendance/check-out.
  * Pure backend integration with zero localStorage dependency.
+ * Enforces HTML5 Geolocation with enableHighAccuracy: true.
  */
 export async function checkOut(
   identity: AttendanceIdentity,
-  options?: { note?: string }
+  options?: AttendanceCheckOutOptions
 ): Promise<AttendanceRecord | AttendanceActionError> {
-  const body: Record<string, unknown> = {};
+  let latitude = options?.latitude;
+  let longitude = options?.longitude;
+
+  if (latitude === undefined || longitude === undefined) {
+    try {
+      const loc = await getDeviceLocation("check-out");
+      latitude = loc.latitude;
+      longitude = loc.longitude;
+    } catch (locErr) {
+      return {
+        reason: "FAILED",
+        message:
+          locErr instanceof Error
+            ? locErr.message
+            : "Please allow location/GPS access to check out.",
+      };
+    }
+  }
+
+  const body: Record<string, unknown> = {
+    latitude,
+    longitude,
+  };
   const hostelId = identity.hostelId ?? getHostelId();
   if (hostelId) body.hostelId = hostelId;
   if (options?.note) body.note = options.note;

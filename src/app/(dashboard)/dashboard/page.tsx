@@ -1,15 +1,18 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import {
+  ArrowRight,
   BedDouble,
   Building2,
-  Users,
-  Wallet,
+  CalendarCheck2,
+  CalendarClock,
   Clock,
   DoorOpen,
   Layers3,
-  CalendarClock,
   Sparkles,
+  Users,
+  Wallet,
 } from "lucide-react";
 import { DashboardShell } from "@/components/layout/DashboardShell";
 import { Protected } from "@/components/common/Protected";
@@ -26,6 +29,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { useApi } from "@/hooks/useApi";
 import { setHostelId } from "@/lib/axios";
 import { hostelGhar, normalizeOwnerDashboard, normalizeRoom, toPaginated } from "@/lib/hostelGhar";
+import { useHostelAttendance } from "@/lib/useAttendance";
+import { dayKeyLocal, formatTimeOfDay } from "@/lib/attendance-types";
 import type { Fee, OwnerDashboard, OwnerDashboardHostel } from "@/lib/api-types";
 import { ErrorState } from "@/components/ui/EmptyState";
 
@@ -147,6 +152,19 @@ export default function OwnerDashboardPage() {
     [dashboard]
   );
 
+  const currentHostelId = user?.hostelId || (hostels[0]?.hostelId ?? null);
+  const { records: attendanceRecords, isLoading: attendanceLoading } =
+    useHostelAttendance(currentHostelId);
+  const todayAttendance = useMemo(
+    () => attendanceRecords.filter((r) => r.date === dayKeyLocal()),
+    [attendanceRecords]
+  );
+  const todayCheckedInCount = todayAttendance.length;
+  const insideNowCount = useMemo(
+    () => todayAttendance.filter((r) => !r.checkOutAt).length,
+    [todayAttendance]
+  );
+
   const maxFloorCount = Math.max(1, ...floorBreakdown.map((item) => item.count));
   const maxTypeCount = Math.max(1, ...typeBreakdown.map((item) => item.count));
 
@@ -258,6 +276,14 @@ export default function OwnerDashboardPage() {
                   delta={totalHostels > 1 ? `${totalHostels} hostels` : "today"}
                   hint="back soon"
                 />
+                <StatCard
+                  icon={CalendarCheck2}
+                  title="Checked In Today"
+                  value={String(todayCheckedInCount)}
+                  delta={insideNowCount > 0 ? `${insideNowCount} inside now` : "live"}
+                  deltaUp
+                  hint="live attendance"
+                />
               </div>
               <QuickActions />
               <div className="grid gap-4 lg:grid-cols-2">
@@ -332,7 +358,73 @@ export default function OwnerDashboardPage() {
                 </div>
                 <OccupancyDonut occupied={occupiedBeds} total={Math.max(totalBeds, 1)} />
               </div>
-              <RecentPayments payments={recentPayments} hostelId={user?.hostelId} />
+              <div className="grid gap-4 lg:grid-cols-2">
+                <RecentPayments payments={recentPayments} hostelId={user?.hostelId} />
+                <Card className="p-5">
+                  <div className="mb-4 flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-[13px] font-semibold text-neutral-600">Daily Attendance</p>
+                      <h3 className="mt-0.5 text-lg font-bold text-neutral-900">
+                        Today&apos;s Check-In Activity
+                      </h3>
+                    </div>
+                    <Link
+                      href="/residents/attendance"
+                      className="inline-flex items-center gap-1 text-[13px] font-bold text-neutral-800 hover:text-black"
+                    >
+                      View all <ArrowRight className="h-3.5 w-3.5" />
+                    </Link>
+                  </div>
+                  <div className="mb-3 flex items-center gap-2">
+                    <Badge tone="green" className="font-bold">
+                      {todayCheckedInCount} Checked In
+                    </Badge>
+                    <Badge tone="amber" className="font-bold">
+                      {insideNowCount} Inside Now
+                    </Badge>
+                  </div>
+                  {attendanceLoading ? (
+                    <p className="py-6 text-sm font-semibold text-neutral-600">
+                      Loading attendance…
+                    </p>
+                  ) : todayAttendance.length === 0 ? (
+                    <p className="py-6 text-sm font-semibold text-neutral-600">
+                      No residents checked in yet today. As residents slide to check in, their
+                      entries will show here live.
+                    </p>
+                  ) : (
+                    <ul className="divide-y divide-neutral-100">
+                      {todayAttendance.slice(0, 5).map((r) => {
+                        const isInside = !r.checkOutAt;
+                        return (
+                          <li key={r.id} className="flex items-center gap-3 py-2.5">
+                            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-muted text-xs font-bold text-neutral-800">
+                              {(r.residentName || "R")
+                                .split(" ")
+                                .map((n) => n[0])
+                                .slice(0, 2)
+                                .join("")}
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-sm font-bold text-neutral-900">
+                                {r.residentName}
+                              </p>
+                              <p className="truncate text-xs font-semibold text-neutral-600">
+                                {r.roomNumber ? `Room ${r.roomNumber}` : "Room —"} · In at{" "}
+                                {formatTimeOfDay(r.checkInAt)}
+                                {r.checkOutAt ? ` · Out at ${formatTimeOfDay(r.checkOutAt)}` : ""}
+                              </p>
+                            </div>
+                            <Badge tone={isInside ? "amber" : "green"} className="font-bold">
+                              {isInside ? "Inside" : "Checked Out"}
+                            </Badge>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </Card>
+              </div>
             </>
           )}
         </div>

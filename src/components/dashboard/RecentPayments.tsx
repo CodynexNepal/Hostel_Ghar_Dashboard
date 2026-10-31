@@ -145,10 +145,10 @@ export function RecentPayments({ payments, hostelId }: Props = {}) {
                 .join("")}
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-sm font-semibold text-neutral-900">
+              <span className="block truncate text-sm font-bold text-neutral-900">
                 {p.residentName ?? "Resident"}
               </span>
-              <span className="block text-xs text-neutral-500">
+              <span className="block text-xs font-semibold text-neutral-600">
                 {monthYearLabel(p)}
                 {p.roomNumber ? ` · Room ${p.roomNumber}` : ""}
                 {rowDate(p) && rowDate(p) !== monthYearLabel(p) ? ` · ${rowDate(p)}` : ""}{" "}
@@ -162,7 +162,7 @@ export function RecentPayments({ payments, hostelId }: Props = {}) {
               {typeof p.paidAmount === "number" &&
                 p.paidAmount > 0 &&
                 p.paidAmount < Number(p.totalPayable ?? p.amount) && (
-                  <span className="block text-xs text-neutral-500">
+                  <span className="block text-xs font-semibold text-neutral-600">
                     paid {formatCurrency(p.paidAmount)}
                   </span>
                 )}

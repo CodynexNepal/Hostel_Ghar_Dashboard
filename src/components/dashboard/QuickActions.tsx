@@ -42,6 +42,13 @@ const ACTIONS: {
     icon: Wallet,
     permission: "MANAGE_PAYMENTS",
   },
+  {
+    label: "Check-In Activity",
+    desc: "Live daily attendance",
+    href: "/residents/attendance",
+    icon: CalendarCheck2,
+    permission: "VIEW_RESIDENTS",
+  },
   { label: "View Residents", desc: "Browse all residents", href: "/residents", icon: Users },
   { label: "View Rooms", desc: "Check occupancy", href: "/rooms", icon: BedDouble },
   {

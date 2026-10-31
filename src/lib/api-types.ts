@@ -306,10 +306,10 @@ export interface NormalizedLeaveType extends LeaveType {
 }
 
 /* ---------------- Fees / Payments ---------------- */
-export type FeeStatus = "PAID" | "PENDING" | "OVERDUE" | "PARTIAL" | "PARTIALLY_PAID";
+export type FeeStatus = "PAID" | "PENDING" | "OVERDUE" | "PARTIAL" | "PARTIALLY_PAID" | "CANCELLED";
 
 /** Backend canonical fee status — `PARTIAL` is stored/displayed as `PARTIALLY_PAID`. */
-export type BackendFeeStatus = "PAID" | "PENDING" | "OVERDUE" | "PARTIALLY_PAID";
+export type BackendFeeStatus = "PAID" | "PENDING" | "OVERDUE" | "PARTIALLY_PAID" | "CANCELLED";
 
 export type FeeType =
   "MONTHLY_HOSTEL_FEE" | "ADMISSION_FEE" | "SECURITY_DEPOSIT" | "LATE_FEE" | "MISC" | string;
@@ -329,11 +329,15 @@ export interface Fee {
     room?: { roomNumber?: string; room_number?: string } | null;
   } | null;
   hostelId?: string;
+  invoiceNumber?: string | null;
   feeType?: FeeType;
   amount: number;
+  discountAmount?: number;
   dueAmount?: number;
   totalPayable?: number;
   paidAmount?: number;
+  outstandingAmount?: number;
+  outstanding?: number;
   billingMonth?: number;
   billingYear?: number;
   dueDate?: string;
@@ -343,6 +347,17 @@ export interface Fee {
   status: FeeStatus;
   method?: string;
   paidAt?: string;
+  payments?: Array<{
+    id: string;
+    amount: number;
+    paymentMethod: string;
+    paymentStatus: string;
+    paidAt: string;
+    transactionReference?: string | null;
+    receiptNumber?: string | null;
+    remarks?: string | null;
+    receivedByUser?: { firstName?: string; lastName?: string } | null;
+  }>;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -387,6 +402,7 @@ export interface CreateInvoicePayload {
 
 export interface Invoice {
   id: string;
+  invoiceNumber?: string | null;
   hostelId?: string;
   residentId?: string;
   residentName?: string;
@@ -394,6 +410,10 @@ export interface Invoice {
   resident?: { id?: string; name?: string; email?: string; [key: string]: unknown };
   amount?: number | string;
   totalPayable?: number | string;
+  paidAmount?: number | string;
+  discountAmount?: number | string;
+  outstandingAmount?: number | string;
+  payments?: unknown[];
   billingMonth?: number | string;
   billingYear?: number | string;
   month?: string;
@@ -418,7 +438,11 @@ export type DomainSocketEvent =
 
 export interface RecordPaymentPayload {
   amount: number;
-  method: "CASH" | "ESEWA" | "KHALTI" | "BANK";
+  method?: "CASH" | "ESEWA" | "KHALTI" | "BANK" | "BANK_TRANSFER" | "OTHER" | string;
+  paymentMethod?: "CASH" | "ESEWA" | "KHALTI" | "BANK" | "BANK_TRANSFER" | "OTHER" | string;
+  paidAt?: string;
+  transactionReference?: string;
+  idempotencyKey?: string;
   remarks?: string;
   month?: string;
   /** Optional manual override — sent only when owner picks a status explicitly. */
@@ -853,6 +877,12 @@ export interface AdminSummaryOccupancy {
 export interface AdminSummaryStats {
   totalHostels?: number;
   totalResidents?: number;
+  totalStudents?: number;
+  totalRegisteredStudents?: number;
+  totalOwners?: number;
+  totalRevenueCollected?: number;
+  outstandingAmount?: number;
+  overdueAmount?: number;
   mrr?: number;
   /** What MRR is derived from, e.g. "activeSubscriptions". */
   mrrBasis?: string;
@@ -936,6 +966,45 @@ export interface AdminPlanMixSummary {
 export interface AdminSummary {
   totalHostels?: number;
   totalResidents?: number;
+  totalStudents?: number;
+  totalRegisteredStudents?: number;
+  totalOwners?: number;
+  totalRevenueCollected?: number;
+  overdueAmount?: number;
+  overduePayments?: number;
+  totalActiveResidents?: number;
+  dailyRevenue?: { date: string; amount: number }[];
+  revenueByHostel?: { hostelId: string; name: string; collected: number }[];
+  paymentMethods?: {
+    breakdown: { method: string; count: number; totalAmount: number }[];
+    cashAmount: number;
+    onlineAmount: number;
+    cashCount: number;
+    onlineCount: number;
+    cashPercent: number;
+    onlinePercent: number;
+  };
+  hostelsAnalytics?: {
+    topPerforming: { hostelId: string; name: string; collected: number }[];
+    highestOutstanding: { hostelId: string; name: string; outstanding: number; overdue: number }[];
+    activeHostels: number;
+    inactiveHostels: number;
+    studentDistribution: {
+      hostelId: string;
+      name: string;
+      city?: string;
+      residents: number;
+      percentage: number;
+    }[];
+    registrationTrends: { period: string; count: number }[];
+  };
+  studentAnalytics?: {
+    totalActive: number;
+    totalRegistered: number;
+    withOutstandingBalance: number;
+    withOverdueBalance: number;
+    growthTrends: { period: string; count: number }[];
+  };
   /** Registered platform users (owners + residents + admins). */
   users?: number;
   activeResidents?: number;

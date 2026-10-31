@@ -387,16 +387,26 @@ export function useMyFees() {
     isLoading: true,
   });
   const [totalPendingDue, setTotalPendingDue] = useState<number | null>(null);
+  const [totalOverdue, setTotalOverdue] = useState<number | null>(null);
+  const [totalPaid, setTotalPaid] = useState<number | null>(null);
   const load = useCallback(async () => {
     setState((s) => ({ ...s, isLoading: s.data === null, error: null }));
     try {
       const res = await hostelGhar.resident.fees();
-      // Backend shape: { success, fees: [...], totalPendingDue }
+      // Backend shape: { success, fees: [...], totalPendingDue, totalOverdue, totalPaid }
       // (NOT { data: [...] }) — pick up `fees` too via toPaginated.
       const items = toPaginated<Fee>(res.data).items;
-      const raw = (res.data ?? {}) as { totalPendingDue?: unknown };
+      const raw = (res.data ?? {}) as {
+        totalPendingDue?: unknown;
+        totalOverdue?: unknown;
+        totalPaid?: unknown;
+      };
       const pending = raw.totalPendingDue !== undefined ? Number(raw.totalPendingDue) : null;
+      const overdue = raw.totalOverdue !== undefined ? Number(raw.totalOverdue) : null;
+      const paid = raw.totalPaid !== undefined ? Number(raw.totalPaid) : null;
       setTotalPendingDue(Number.isFinite(pending as number) ? (pending as number) : null);
+      setTotalOverdue(Number.isFinite(overdue as number) ? (overdue as number) : null);
+      setTotalPaid(Number.isFinite(paid as number) ? (paid as number) : null);
       setState({ data: items, error: null, isLoading: false });
       return items;
     } catch (err) {
@@ -408,7 +418,7 @@ export function useMyFees() {
   useEffect(() => {
     load();
   }, [load]);
-  return { ...state, totalPendingDue, refetch: load, retry: load };
+  return { ...state, totalPendingDue, totalOverdue, totalPaid, refetch: load, retry: load };
 }
 
 export function useMyLeaves() {

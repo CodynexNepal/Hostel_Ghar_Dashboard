@@ -1605,6 +1605,35 @@ export function normalizeAdminSummary(raw: unknown): AdminSummaryWithCounts {
     feeCounts: analyticsFeeCounts(pick, root),
     finance: (pick("finance") ?? root.finance) as AdminSummary["finance"],
     planMix: (pick("planMix", "plan_mix") ?? root.planMix) as AdminSummary["planMix"],
+    dailyRevenue: (pick("dailyRevenue", "daily_revenue") ??
+      root.dailyRevenue) as AdminSummary["dailyRevenue"],
+    revenueByHostel: (pick("revenueByHostel", "revenue_by_hostel") ??
+      root.revenueByHostel) as AdminSummary["revenueByHostel"],
+    paymentMethods: (pick("paymentMethods", "payment_methods") ??
+      root.paymentMethods) as AdminSummary["paymentMethods"],
+    hostelsAnalytics: (pick("hostelsAnalytics", "hostels_analytics") ??
+      root.hostelsAnalytics) as AdminSummary["hostelsAnalytics"],
+    studentAnalytics: (pick("studentAnalytics", "student_analytics") ??
+      root.studentAnalytics) as AdminSummary["studentAnalytics"],
+    totalRegisteredStudents: optNum(
+      "totalRegisteredStudents",
+      "total_registered_students",
+      "totalStudents"
+    ),
+    totalOwners: optNum("totalOwners", "total_owners", "ownerCount"),
+    totalRevenueCollected: optNum(
+      "totalRevenueCollected",
+      "total_revenue_collected",
+      "totalRevenue"
+    ),
+    overdueAmount: optNum("overdueAmount", "overdue_amount", "overduePayments"),
+    overduePayments: optNum("overduePayments", "overdue_payments", "overdueAmount"),
+    totalActiveResidents: optNum(
+      "totalActiveResidents",
+      "total_active_residents",
+      "activeResidents",
+      "totalResidents"
+    ),
     trends:
       (pick("trends") ?? root.trends)
         ? {
@@ -3085,6 +3114,18 @@ export const hostelGhar = {
         params
       ),
     fees: () => getWithRetry<Fee[] | ApiEnvelope<Fee[]>>(`${PREFIX}/resident/fees`),
+    payFee: (
+      feeId: string,
+      payload: {
+        amount: number;
+        paymentMethod?: string;
+        transactionReference?: string;
+        remarks?: string;
+      }
+    ) => api.post(`${PREFIX}/resident/fees/${feeId}/pay`, payload),
+    payments: (params?: ListParams) => getWithRetry<unknown>(`${PREFIX}/resident/payments`, params),
+    feeDetails: (feeId: string) =>
+      getWithRetry<Fee | ApiEnvelope<Fee>>(`${PREFIX}/resident/fees/${feeId}`),
     /** GET /fees/:feeId/payment-proofs (resident) — 404 until backend ships; callers fall back to local. */
     paymentProofs: (params?: ListParams) =>
       getWithRetry<unknown>(`${PREFIX}/resident/payment-proofs`, params),
@@ -3125,18 +3166,24 @@ export const hostelGhar = {
      * The `Idempotency-Key` header is dropped — the backend rejects unknown
      * headers on this route with 400.
      */
-    recordPayment: (feeId: string, payload: RecordPaymentPayload) => {
+    recordPayment: (
+      feeId: string,
+      payload: RecordPaymentPayload & { paidAt?: string; transactionReference?: string }
+    ) => {
       const amount = Number(payload.amount) || 0;
-      const backendMethod = toBackendPaymentMethod(payload.method);
+      const backendMethod = toBackendPaymentMethod(payload.method || payload.paymentMethod);
       const status = payload.status ? toBackendFeeStatus(payload.status) : undefined;
       const body: Record<string, unknown> = {
         amount,
+        paymentMethod: backendMethod,
+        paidAt: payload.paidAt,
+        transactionReference: payload.transactionReference,
+        remarks: payload.remarks,
         paidAmount: amount,
         paid_amount: amount,
         total: amount,
         totalAmount: amount,
         method: backendMethod,
-        paymentMethod: backendMethod,
         payment_method: backendMethod,
       };
       if (status) {
@@ -3147,8 +3194,17 @@ export const hostelGhar = {
       }
       if (payload.remarks) body.remarks = payload.remarks;
       if (payload.month) body.month = payload.month;
-      return api.patch<Fee | ApiEnvelope<Fee>>(`${PREFIX}/fees/${feeId}/payment`, body);
+      return api
+        .post<Fee | ApiEnvelope<Fee>>(`${PREFIX}/fees/${feeId}/payments`, body)
+        .catch(() => api.patch<Fee | ApiEnvelope<Fee>>(`${PREFIX}/fees/${feeId}/payment`, body));
     },
+    getInvoice: (id: string) => getWithRetry<Fee | ApiEnvelope<Fee>>(`${PREFIX}/fees/${id}`),
+    hostelPayments: (hostelId: string, params?: ListParams) =>
+      getWithRetry<unknown>(`${PREFIX}/fees/hostels/${hostelId}/payments`, params),
+    getReceipt: (paymentId: string) =>
+      getWithRetry<unknown>(`${PREFIX}/payments/${paymentId}/receipt`),
+    syncOverdue: (hostelId?: string) =>
+      api.post(`${PREFIX}/fees/sync-overdue`, {}, { params: hostelId ? { hostelId } : undefined }),
     /**
      * Manual status override — tries PATCH /fees/:id/status, then falls back
      * to PATCH /fees/:id. Sends canonical + legacy keys for max tolerance.

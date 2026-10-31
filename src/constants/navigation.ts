@@ -80,7 +80,6 @@ export const OWNER_NAVIGATION: NavItem[] = [
 
 export const RESIDENT_NAVIGATION: NavItem[] = [
   { label: "Dashboard", href: "/resident", icon: LayoutDashboard },
-  { label: "My Bookings", href: "/resident/bookings", icon: CalendarCheck2 },
   { label: "Check-In / Out", href: "/resident/attendance", icon: CalendarCheck2 },
   { label: "My Room", href: "/resident/room", icon: BedDouble },
   { label: "My Payments", href: "/resident/payments", icon: CreditCard },

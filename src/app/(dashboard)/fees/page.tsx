@@ -28,9 +28,23 @@ import { useToast } from "@/hooks/useToast";
 import { useDomainSocket } from "@/hooks/useDomainSocket";
 import { PaymentProofReview } from "@/components/payments/PaymentProofReview";
 import { useHostelPaymentProofs, proofStatusTone, proofStatusLabel } from "@/lib/payment-proofs";
+import { RecordCashPaymentModal } from "@/components/payments/RecordCashPaymentModal";
+import { ReceiptModal, type ReceiptData } from "@/components/payments/ReceiptModal";
+import {
+  AlertTriangle,
+  Calendar,
+  CheckCircle2,
+  Clock,
+  CreditCard,
+  FileText,
+  RefreshCw,
+  Search,
+  Wallet,
+} from "lucide-react";
 
-interface FeeRow {
+export interface FeeRow {
   id: string;
+  invoiceNumber?: string | null;
   residentId?: string;
   residentName: string;
   roomNumber: string;
@@ -42,8 +56,11 @@ interface FeeRow {
   dueAmount?: number;
   totalPayable?: number;
   paidAmount?: number;
+  discountAmount?: number;
+  outstandingAmount?: number;
   dueDate: string;
   status: FeeStatus;
+  payments?: any[];
 }
 
 /** Backend sends PARTIALLY_PAID; UI normalizes both spellings to PARTIAL. */
@@ -55,14 +72,6 @@ function toFeeRowStatus(raw: Fee["status"] | string | undefined): FeeStatus {
   if (v === "PAID" || v === "PENDING" || v === "OVERDUE") return v;
   return "PENDING";
 }
-
-/** Status options for the manual override dropdown (no NULL — backend rejects it). */
-const FEE_STATUS_OPTIONS: { value: BackendFeeStatus; label: string }[] = [
-  { value: "PENDING", label: "Pending" },
-  { value: "PARTIALLY_PAID", label: "Partially paid" },
-  { value: "PAID", label: "Paid" },
-  { value: "OVERDUE", label: "Overdue" },
-];
 
 const MONTH_NAMES = [
   "Jan",
@@ -103,8 +112,13 @@ function feeToRow(
     nested?.room?.room_number ??
     "";
   const total = Number(f.totalPayable ?? f.amount) || 0;
+  const paid = Number(f.paidAmount ?? 0);
+  const outstanding =
+    f.outstandingAmount !== undefined ? Number(f.outstandingAmount) : Math.max(0, total - paid);
+
   return {
     id: String(f.id),
+    invoiceNumber: f.invoiceNumber ?? null,
     residentId: f.residentId ?? nested?.id,
     residentName:
       (nestedName || "").trim() ||
@@ -118,15 +132,15 @@ function feeToRow(
     billingYear: f.billingYear,
     amount: Number(f.amount) || 0,
     dueAmount: f.dueAmount !== undefined ? Number(f.dueAmount) : undefined,
-    totalPayable: Number(f.totalPayable ?? total) || 0,
-    paidAmount: f.paidAmount !== undefined ? Number(f.paidAmount) : undefined,
+    totalPayable: total,
+    paidAmount: paid,
+    discountAmount: Number(f.discountAmount ?? 0),
+    outstandingAmount: outstanding,
     dueDate: f.dueDate ?? "",
     status: toFeeRowStatus(f.status),
+    payments: Array.isArray(f.payments) ? f.payments : [],
   };
 }
-
-const selectClass =
-  "h-10 w-full rounded-md border border-surface-border bg-white px-3 text-sm text-neutral-900 outline-none focus:border-brand-ink focus:ring-2 focus:ring-brand disabled:cursor-not-allowed disabled:bg-neutral-50 disabled:text-neutral-400";
 
 /** Resolve hostel id: session → cookie → first hostel. */
 async function resolveHostelId(preferred?: string | null): Promise<string | null> {
@@ -141,41 +155,6 @@ async function resolveHostelId(preferred?: string | null): Promise<string | null
   }
 }
 
-const INITIAL_FEES: FeeRow[] = [
-  {
-    id: "fee-1",
-    residentName: "Aashish Shah",
-    roomNumber: "A-101",
-    amount: 9000,
-    dueDate: "2026-09-10",
-    status: "PAID",
-  },
-  {
-    id: "fee-2",
-    residentName: "Suman Gurung",
-    roomNumber: "A-101",
-    amount: 9000,
-    dueDate: "2026-09-15",
-    status: "PENDING",
-  },
-  {
-    id: "fee-3",
-    residentName: "Ramesh Karki",
-    roomNumber: "B-202",
-    amount: 12000,
-    dueDate: "2026-09-08",
-    status: "OVERDUE",
-  },
-  {
-    id: "fee-4",
-    residentName: "Nisha Rai",
-    roomNumber: "C-305",
-    amount: 10500,
-    dueDate: "2026-09-20",
-    status: "PARTIAL",
-  },
-];
-
 export default function FeesPage() {
   const { success, error: toastError } = useToast();
   const { user } = useAuth();
@@ -186,14 +165,18 @@ export default function FeesPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [statusFilter, setStatusFilter] = useState("");
-  const [paying, setPaying] = useState<FeeRow | null>(null);
-  const [payAmount, setPayAmount] = useState("");
-  const [payMethod, setPayMethod] = useState("CASH");
-  const [payStatus, setPayStatus] = useState<BackendFeeStatus | "AUTO">("AUTO");
-  const [payError, setPayError] = useState<string | null>(null);
-  const [isPaying, setIsPaying] = useState(false);
-  const [statusUpdatingId, setStatusUpdatingId] = useState<string | null>(null);
+  const [isSyncingOverdue, setIsSyncingOverdue] = useState(false);
+
+  // Filters
+  const [statusFilter, setStatusFilter] = useState<string>("");
+  const [searchQuery, setSearchQuery] = useState<string>("");
+  const [selectedMonth, setSelectedMonth] = useState<string>("");
+  const [selectedYear, setSelectedYear] = useState<string>(String(new Date().getFullYear()));
+
+  // Modals
+  const [recordPaymentFee, setRecordPaymentFee] = useState<FeeRow | null>(null);
+  const [viewReceipt, setViewReceipt] = useState<ReceiptData | null>(null);
+
   const {
     proofs,
     pendingCount,
@@ -203,8 +186,14 @@ export default function FeesPage() {
   const proofByFee = new Map(proofs.map((p) => [String(p.feeId), p]));
 
   const refreshFees = useCallback(
-    async (hid: string, status?: string) => {
-      const res = await hostelGhar.fees.hostelFees(hid, status ? { status } : undefined);
+    async (hid: string, status?: string, month?: number, year?: number, search?: string) => {
+      const params: Record<string, string | number> = {};
+      if (status) params.status = status;
+      if (month) params.month = month;
+      if (year) params.year = year;
+      if (search) params.search = search;
+
+      const res = await hostelGhar.fees.hostelFees(hid, params as any);
       const items = toPaginated<Fee>(res.data).items;
       const roomById = new Map(residents.map((r) => [r.id, r.roomNumber]));
       const nameById = new Map(residents.map((r) => [r.id, r.name]));
@@ -213,83 +202,80 @@ export default function FeesPage() {
     [residents]
   );
 
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      setIsLoading(true);
-      setLoadError(null);
+  const loadData = useCallback(async () => {
+    setIsLoading(true);
+    setLoadError(null);
+    try {
+      const hid = await resolveHostelId(user?.hostelId);
+      setHostelId(hid);
+      if (!hid) {
+        setResidents([]);
+        setRooms([]);
+        setServerFees([]);
+        setIsLoading(false);
+        return;
+      }
+      let loadedResidents: Resident[] = [];
       try {
-        const hid = await resolveHostelId(user?.hostelId);
-        if (cancelled) return;
-        setHostelId(hid);
-        if (!hid) {
-          setResidents([]);
-          setRooms([]);
-          setServerFees([]);
-          setIsLoading(false);
-          return;
-        }
-        let loadedResidents: Resident[] = [];
+        const res = await hostelGhar.owner.residents({ hostelId: hid });
+        const items = toPaginated<unknown>(unwrap<unknown>(res.data)).items;
+        loadedResidents = items.map(normalizeResident);
+      } catch {
+        loadedResidents = [];
+      }
+
+      if (loadedResidents.length === 0) {
         try {
-          const res = await hostelGhar.owner.residents({ hostelId: hid });
+          const res = await hostelGhar.hostels.residents(hid);
           const items = toPaginated<unknown>(unwrap<unknown>(res.data)).items;
           loadedResidents = items.map(normalizeResident);
         } catch {
-          loadedResidents = [];
+          /* keep empty */
         }
-
-        if (loadedResidents.length === 0) {
-          try {
-            const res = await hostelGhar.hostels.residents(hid);
-            const items = toPaginated<unknown>(unwrap<unknown>(res.data)).items;
-            loadedResidents = items.map(normalizeResident);
-          } catch {
-            /* keep empty */
-          }
-        }
-        let loadedRooms: Room[] = [];
-        try {
-          const res = await hostelGhar.rooms.list({ limit: 100, hostelId: hid });
-          const items = toPaginated<unknown>(res.data).items;
-          loadedRooms = items.map(normalizeRoom);
-        } catch {
-          loadedRooms = [];
-        }
-        let mapped: FeeRow[] = [];
-        try {
-          // GET /fees/hostels/:hostelId — owner/admin ledger.
-          const res = await hostelGhar.fees.hostelFees(
-            hid,
-            statusFilter ? { status: statusFilter } : undefined
-          );
-          const items = toPaginated<Fee>(res.data).items;
-          const roomById = new Map(loadedResidents.map((r) => [r.id, r.roomNumber]));
-          const nameById = new Map(loadedResidents.map((r) => [r.id, r.name]));
-          mapped = items.map((f) => feeToRow(f, roomById, nameById));
-        } catch {
-          mapped = [];
-        }
-        if (cancelled) return;
-        setResidents(loadedResidents);
-        setRooms(loadedRooms);
-        setServerFees(mapped);
-      } catch (err) {
-        if (!cancelled) {
-          setLoadError(err instanceof Error ? err.message : "Couldn't load fee data.");
-          setServerFees([]);
-        }
-      } finally {
-        if (!cancelled) setIsLoading(false);
       }
-    }
-    load();
-    return () => {
-      cancelled = true;
-    };
-  }, [user?.hostelId, statusFilter]);
 
-  // Realtime: payment:processed / hostel:updated refresh the ledger.
-  // Joins user:<id>, role:<ROLE>, hostel:<id> per backend socket spec.
+      let loadedRooms: Room[] = [];
+      try {
+        const res = await hostelGhar.rooms.list({ limit: 100, hostelId: hid });
+        const items = toPaginated<unknown>(res.data).items;
+        loadedRooms = items.map(normalizeRoom);
+      } catch {
+        loadedRooms = [];
+      }
+
+      let mapped: FeeRow[] = [];
+      try {
+        const params: Record<string, string | number> = {};
+        if (statusFilter) params.status = statusFilter;
+        if (selectedMonth) params.month = Number(selectedMonth);
+        if (selectedYear) params.year = Number(selectedYear);
+        if (searchQuery.trim()) params.search = searchQuery.trim();
+
+        const res = await hostelGhar.fees.hostelFees(hid, params as any);
+        const items = toPaginated<Fee>(res.data).items;
+        const roomById = new Map(loadedResidents.map((r) => [r.id, r.roomNumber]));
+        const nameById = new Map(loadedResidents.map((r) => [r.id, r.name]));
+        mapped = items.map((f) => feeToRow(f, roomById, nameById));
+      } catch {
+        mapped = [];
+      }
+
+      setResidents(loadedResidents);
+      setRooms(loadedRooms);
+      setServerFees(mapped);
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "Couldn't load fee data.");
+      setServerFees([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [user?.hostelId, statusFilter, selectedMonth, selectedYear, searchQuery]);
+
+  useEffect(() => {
+    void loadData();
+  }, [loadData]);
+
+  // Realtime: payment:processed / hostel:updated refresh the ledger
   useDomainSocket({
     userId: user?.id,
     role: user?.role,
@@ -297,52 +283,69 @@ export default function FeesPage() {
     onEvent: useCallback(
       (event: string) => {
         if ((event === "payment:processed" || event === "hostel:updated") && hostelId) {
-          void refreshFees(hostelId, statusFilter || undefined)
+          void refreshFees(
+            hostelId,
+            statusFilter || undefined,
+            selectedMonth ? Number(selectedMonth) : undefined,
+            selectedYear ? Number(selectedYear) : undefined,
+            searchQuery.trim() || undefined
+          )
             .then((rows) => setServerFees(rows))
             .catch(() => undefined);
         }
       },
-      [hostelId, refreshFees, statusFilter]
+      [hostelId, refreshFees, statusFilter, selectedMonth, selectedYear, searchQuery]
     ),
   });
 
-  const fees: FeeRow[] = useMemo(() => {
-    const rows = serverFees ?? [];
-    if (rows.length === 0 && loadError) return INITIAL_FEES;
-    return rows;
-  }, [serverFees, loadError]);
-  const usingFallback = fees.length > 0 && (serverFees ?? []).length === 0 && Boolean(loadError);
+  const fees = useMemo(() => serverFees ?? [], [serverFees]);
 
   const totals = useMemo(() => {
-    const totalOf = (f: FeeRow) => Number(f.totalPayable ?? f.amount) || 0;
-    const paid = fees.filter((f) => f.status === "PAID").reduce((s, i) => s + totalOf(i), 0);
-    const pending = fees
-      .filter(
-        (f) => f.status === "PENDING" || f.status === "PARTIAL" || f.status === "PARTIALLY_PAID"
-      )
-      .reduce((s, i) => s + totalOf(i), 0);
-    const overdue = fees.filter((f) => f.status === "OVERDUE").reduce((s, i) => s + totalOf(i), 0);
-    return { paid, pending, overdue };
+    let paid = 0;
+    let outstanding = 0;
+    let overdue = 0;
+    let overdueCount = 0;
+
+    fees.forEach((f) => {
+      paid += Number(f.paidAmount ?? 0);
+      outstanding += Number(f.outstandingAmount ?? 0);
+      if (f.status === "OVERDUE") {
+        overdue += Number(f.outstandingAmount ?? f.totalPayable ?? f.amount);
+        overdueCount += 1;
+      }
+    });
+
+    return { paid, outstanding, overdue, overdueCount };
   }, [fees]);
+
+  async function handleSyncOverdue() {
+    if (!hostelId) return;
+    setIsSyncingOverdue(true);
+    try {
+      const res = await hostelGhar.fees.syncOverdue(hostelId);
+      const data = unwrap<{ count: number }>(res.data);
+      success(
+        "Overdue statuses synchronized",
+        `Updated ${data?.count ?? 0} invoice(s) based on due dates.`
+      );
+      await loadData();
+    } catch (err) {
+      toastError("Failed to sync overdue", toApiError(err).message);
+    } finally {
+      setIsSyncingOverdue(false);
+    }
+  }
 
   async function handleGenerateMonthly() {
     if (!hostelId) {
       toastError("No hostel linked", "Link your account to a hostel first.");
       return;
     }
-    // POST /fees/generate-monthly — owner/admin only (backend enforces role).
     setIsGenerating(true);
     try {
       const res = await hostelGhar.fees.generateMonthly({ hostelId });
-      const payload = unwrap<unknown>(res.data) as {
-        message?: string;
-        generated?: number;
-        skipped?: number;
-        billingMonth?: number;
-        billingYear?: number;
-      };
-      const rows = await refreshFees(hostelId, statusFilter || undefined);
-      setServerFees(rows);
+      const payload = unwrap<any>(res.data);
+      await loadData();
       const label =
         payload?.billingMonth && payload?.billingYear
           ? billingLabel(payload.billingMonth, payload.billingYear)
@@ -361,348 +364,353 @@ export default function FeesPage() {
     }
   }
 
-  function openPayModal(row: FeeRow) {
-    setPaying(row);
-    const remaining = Number(row.totalPayable ?? row.amount) - Number(row.paidAmount ?? 0);
-    setPayAmount(String(Math.max(0, Math.round(remaining))));
-    setPayMethod("CASH");
-    setPayStatus("AUTO");
-    setPayError(null);
-  }
-
-  /** Backend derives status: paidAmount >= totalPayable → PAID, >0 → PARTIAL. */
-  function previewStatus(row: FeeRow, addAmount: number): FeeRow["status"] {
-    if (payStatus !== "AUTO") return toFeeRowStatus(payStatus);
-    const total = Number(row.totalPayable ?? row.amount) || 0;
-    const paid = (Number(row.paidAmount ?? 0) || 0) + addAmount;
-    if (paid >= total && total > 0) return "PAID";
-    if (paid > 0) return "PARTIAL";
-    return row.status;
-  }
-
-  async function handleRecordPayment(e: React.FormEvent) {
-    e.preventDefault();
-    if (!paying) return;
-    const amount = Number(payAmount) || 0;
-    if (amount <= 0) {
-      setPayError("Enter an amount greater than 0.");
-      toastError("Invalid amount", "Enter an amount greater than 0.");
-      return;
-    }
-    // PATCH /fees/:id/payment — owner/admin only (backend enforces role).
-    // When the owner picks a status explicitly (not AUTO) it is sent as an
-    // override; otherwise the backend derives it from paid vs payable.
-    setIsPaying(true);
-    setPayError(null);
-    try {
-      const res = await hostelGhar.fees.recordPayment(paying.id, {
-        amount,
-        method: payMethod as "CASH" | "ESEWA" | "KHALTI" | "BANK",
-        ...(payStatus !== "AUTO" ? { status: payStatus } : {}),
-      });
-      const payload = unwrap<Fee | null>(res.data);
-      if (payload) {
-        const roomById = new Map(residents.map((r) => [r.id, r.roomNumber]));
-        const nameById = new Map(residents.map((r) => [r.id, r.name]));
-        const updated = feeToRow(payload, roomById, nameById);
-        setServerFees((prev) => (prev ?? []).map((f) => (f.id === updated.id ? updated : f)));
-        setPaying(null);
-        success(
-          "Payment recorded",
-          `${updated.residentName} is now ${updated.status} · paid ${formatCurrency(Number(updated.paidAmount ?? amount))}`
-        );
-      } else if (hostelId) {
-        setServerFees(await refreshFees(hostelId, statusFilter || undefined));
-        setPaying(null);
-        success("Payment recorded", `${formatCurrency(amount)} · ${payMethod}`);
-      }
-    } catch (err) {
-      const shape = toApiError(err);
-      setPayError(shape.message);
-      toastError("Couldn't record payment", shape.message);
-    } finally {
-      setIsPaying(false);
-    }
-  }
-
-  /** Manual status override straight from the table (PENDING / PAID / OVERDUE / PARTIALLY_PAID). */
-  async function handleStatusChange(row: FeeRow, next: BackendFeeStatus) {
-    const current = row.status === "PARTIAL" ? "PARTIALLY_PAID" : row.status;
-    if (next === current) return;
-    setStatusUpdatingId(row.id);
-    try {
-      const res = await hostelGhar.fees.updateStatus(row.id, { status: next });
-      const payload = unwrap<Fee | null>(res.data);
-      if (payload) {
-        const roomById = new Map(residents.map((r) => [r.id, r.roomNumber]));
-        const nameById = new Map(residents.map((r) => [r.id, r.name]));
-        const updated = feeToRow(payload, roomById, nameById);
-        setServerFees((prev) => (prev ?? []).map((f) => (f.id === updated.id ? updated : f)));
-      } else if (hostelId) {
-        setServerFees(await refreshFees(hostelId, statusFilter || undefined));
-      }
-      success(
-        "Status updated",
-        `${row.residentName} → ${next === "PARTIALLY_PAID" ? "PARTIAL" : next}`
-      );
-    } catch (err) {
-      const shape = toApiError(err);
-      toastError("Couldn't update status", shape.message);
-    } finally {
-      setStatusUpdatingId(null);
-    }
-  }
-
   const columns: Column<FeeRow>[] = [
+    {
+      key: "invoiceNumber",
+      header: "Invoice / ID",
+      sortable: true,
+      render: (f) => (
+        <div>
+          <span className="font-mono text-xs font-semibold text-neutral-200">
+            {f.invoiceNumber || `INV-${f.id.slice(0, 8)}`}
+          </span>
+          <span className="block text-[11px] text-neutral-500">{f.feeType || "MONTHLY_FEE"}</span>
+        </div>
+      ),
+    },
     {
       key: "residentName",
       header: "Resident",
       sortable: true,
       render: (f) => (
-        <span>
-          <span className="block font-semibold">{f.residentName}</span>
-          <span className="block text-xs text-neutral-500">
-            {f.residentId ? `ID: ${f.residentId} · ` : ""}Room {f.roomNumber || "—"}
-          </span>
-        </span>
+        <div>
+          <span className="block font-medium text-neutral-100">{f.residentName}</span>
+          <span className="block text-xs text-neutral-400">Room {f.roomNumber || "—"}</span>
+        </div>
       ),
     },
     {
       key: "amount",
-      header: "Payable",
+      header: "Payable / Paid",
       sortable: true,
-      render: (f) => (
-        <span>
-          <span className="block font-bold">
-            {formatCurrency(Number(f.totalPayable ?? f.amount))}
-          </span>
-          <span className="block text-xs text-neutral-500">
-            base {formatCurrency(f.amount)}
-            {f.dueAmount ? ` + due ${formatCurrency(f.dueAmount)}` : ""}
-            {f.paidAmount ? ` · paid ${formatCurrency(f.paidAmount)}` : ""}
-          </span>
-        </span>
-      ),
+      render: (f) => {
+        const total = Number(f.totalPayable ?? f.amount);
+        const paid = Number(f.paidAmount ?? 0);
+        const outstanding = Number(f.outstandingAmount ?? Math.max(0, total - paid));
+        const progress = total > 0 ? Math.min(100, Math.round((paid / total) * 100)) : 0;
+
+        return (
+          <div className="min-w-[140px]">
+            <div className="flex items-baseline justify-between">
+              <span className="font-bold text-neutral-100">{formatCurrency(total)}</span>
+              <span className="text-xs text-neutral-400">{progress}%</span>
+            </div>
+            <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-neutral-800">
+              <div
+                className={`h-full rounded-full transition-all duration-300 ${
+                  f.status === "PAID"
+                    ? "bg-[#C3FF7D]"
+                    : f.status === "OVERDUE"
+                      ? "bg-rose-500"
+                      : "bg-amber-400"
+                }`}
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+            <div className="mt-1 flex items-center justify-between text-[11px] text-neutral-400">
+              <span>Paid: {formatCurrency(paid)}</span>
+              {outstanding > 0 && (
+                <span className="font-semibold text-amber-400">
+                  Due: {formatCurrency(outstanding)}
+                </span>
+              )}
+            </div>
+          </div>
+        );
+      },
     },
     {
       key: "billingMonth",
-      header: "Billing",
+      header: "Billing Period",
       sortable: true,
       render: (f) => (
-        <span>
-          <span className="block font-medium">{billingLabel(f.billingMonth, f.billingYear)}</span>
-          <span className="block text-xs text-neutral-500">
-            {f.feeType ?? "MONTHLY_HOSTEL_FEE"}
-          </span>
+        <span className="text-xs font-medium text-neutral-300">
+          {billingLabel(f.billingMonth, f.billingYear)}
         </span>
       ),
     },
     {
       key: "dueDate",
-      header: "Due date",
+      header: "Due Date",
       sortable: true,
-      render: (f) => <span>{f.dueDate ? formatDate(f.dueDate) : "—"}</span>,
+      render: (f) => (
+        <span className="text-xs text-neutral-300">{f.dueDate ? formatDate(f.dueDate) : "—"}</span>
+      ),
     },
     {
       key: "status",
       header: "Status",
       sortable: true,
-      render: (f) => (
-        <span className="inline-flex items-center gap-2">
-          <Badge tone={statusTone(f.status)}>{f.status}</Badge>
-          <select
-            aria-label={`Change status for ${f.residentName}`}
-            value={f.status === "PARTIAL" ? "PARTIALLY_PAID" : f.status}
-            disabled={statusUpdatingId === f.id}
-            onChange={(e) => void handleStatusChange(f, e.target.value as BackendFeeStatus)}
-            className="h-7 rounded-md border border-surface-border bg-white px-1.5 text-xs text-neutral-700 outline-none focus:border-brand-ink disabled:opacity-60"
-          >
-            {FEE_STATUS_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-        </span>
-      ),
+      render: (f) => {
+        let tone: "success" | "warning" | "danger" | "neutral" = "neutral";
+        if (f.status === "PAID") tone = "success";
+        else if (f.status === "PARTIAL") tone = "warning";
+        else if (f.status === "OVERDUE") tone = "danger";
+
+        return <Badge tone={tone}>{f.status === "PARTIAL" ? "PARTIALLY PAID" : f.status}</Badge>;
+      },
     },
     {
       key: "receipt",
-      header: "Receipt",
+      header: "Audit / Proof",
       render: (f) => {
         const proof = proofByFee.get(String(f.id));
-        if (!proof) return <span className="text-xs text-neutral-400">—</span>;
-        return <Badge tone={proofStatusTone(proof.status)}>{proofStatusLabel(proof.status)}</Badge>;
+        const paymentCount = f.payments?.length ?? 0;
+
+        if (paymentCount > 0) {
+          const lastPayment = f.payments![paymentCount - 1];
+          return (
+            <button
+              onClick={() => {
+                setViewReceipt({
+                  receiptNumber: lastPayment.receiptNumber || `RCP-${lastPayment.id?.slice(0, 8)}`,
+                  invoiceNumber: f.invoiceNumber || `INV-${f.id.slice(0, 8)}`,
+                  studentName: f.residentName,
+                  roomNumber: f.roomNumber,
+                  amount: Number(lastPayment.amount),
+                  paymentMethod: lastPayment.paymentMethod || "CASH",
+                  paidAt: lastPayment.paidAt || lastPayment.createdAt,
+                  transactionReference: lastPayment.transactionReference,
+                  receivedBy: lastPayment.receivedByUser?.name || "Hostel Admin",
+                  totalPayable: Number(f.totalPayable ?? f.amount),
+                  totalPaid: Number(f.paidAmount ?? lastPayment.amount),
+                  outstandingBalance: Number(f.outstandingAmount ?? 0),
+                  billingMonth: f.billingMonth,
+                  billingYear: f.billingYear,
+                });
+              }}
+              className="inline-flex items-center gap-1 rounded bg-neutral-800 px-2 py-1 text-[11px] font-medium text-[#C3FF7D] hover:bg-neutral-700"
+              title="View latest payment receipt"
+            >
+              <FileText className="h-3 w-3" />
+              {paymentCount} {paymentCount === 1 ? "Txn" : "Txns"}
+            </button>
+          );
+        }
+
+        if (proof) {
+          return (
+            <Badge tone={proofStatusTone(proof.status)}>{proofStatusLabel(proof.status)}</Badge>
+          );
+        }
+
+        return <span className="text-xs text-neutral-500">—</span>;
       },
     },
     {
       key: "actions",
       header: "Actions",
       render: (f) => (
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => openPayModal(f)}
-          disabled={f.status === "PAID"}
-        >
-          Record payment
-        </Button>
+        <div className="flex items-center gap-1.5">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setRecordPaymentFee(f)}
+            disabled={f.status === "PAID"}
+            className={
+              f.status === "PAID"
+                ? "opacity-50"
+                : "border-[#C3FF7D]/30 text-[#C3FF7D] hover:bg-[#C3FF7D]/10"
+            }
+          >
+            {f.status === "PAID" ? "Settled" : "Record Payment"}
+          </Button>
+        </div>
       ),
     },
   ];
 
   return (
     <DashboardShell
-      title="Fees"
-      subtitle="Hostel Ghar / Finance / Fees — monthly charges and collection status."
+      title="Fee Management"
+      subtitle="Hostel Ghar / Finance / Fees — student monthly charges, collections, and overdue tracking."
     >
       <Protected permission="MANAGE_PAYMENTS" redirectTo="/dashboard">
-        <div className="mb-4 grid gap-4 sm:grid-cols-3">
-          {[
-            ["Collected", totals.paid, "cash in ledger"],
-            ["Pending", totals.pending, "awaiting payment"],
-            ["Overdue", totals.overdue, "needs follow-up"],
-          ].map(([label, value, hint]) => (
-            <Card key={label} className="p-4">
-              <p className="text-[13px] text-neutral-500">{label}</p>
-              <p className="mt-1 text-xl font-bold">{formatCurrency(Number(value))}</p>
-              <p className="mt-0.5 text-xs text-neutral-400">{hint}</p>
-            </Card>
-          ))}
+        {/* KPI Cards */}
+        <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <Card className="border-neutral-800 bg-[#0d0d0d] p-4">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium uppercase tracking-wider text-neutral-400">
+                Total Collected
+              </span>
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#C3FF7D]/10 text-[#C3FF7D]">
+                <CheckCircle2 className="h-4 w-4" />
+              </div>
+            </div>
+            <p className="mt-2 text-2xl font-bold text-neutral-100">
+              {formatCurrency(totals.paid)}
+            </p>
+            <p className="mt-1 text-xs text-neutral-400">Verified cash & digital payments</p>
+          </Card>
+
+          <Card className="border-neutral-800 bg-[#0d0d0d] p-4">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium uppercase tracking-wider text-neutral-400">
+                Outstanding Balance
+              </span>
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-400/10 text-amber-400">
+                <Wallet className="h-4 w-4" />
+              </div>
+            </div>
+            <p className="mt-2 text-2xl font-bold text-amber-400">
+              {formatCurrency(totals.outstanding)}
+            </p>
+            <p className="mt-1 text-xs text-neutral-400">Pending & partially paid balances</p>
+          </Card>
+
+          <Card className="border-neutral-800 bg-[#0d0d0d] p-4">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium uppercase tracking-wider text-neutral-400">
+                Total Overdue
+              </span>
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-rose-500/10 text-rose-400">
+                <AlertTriangle className="h-4 w-4" />
+              </div>
+            </div>
+            <p className="mt-2 text-2xl font-bold text-rose-400">
+              {formatCurrency(totals.overdue)}
+            </p>
+            <p className="mt-1 text-xs text-neutral-400">Past payment deadline</p>
+          </Card>
+
+          <Card className="border-neutral-800 bg-[#0d0d0d] p-4">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium uppercase tracking-wider text-neutral-400">
+                Overdue Students
+              </span>
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-rose-500/10 text-rose-400">
+                <Clock className="h-4 w-4" />
+              </div>
+            </div>
+            <p className="mt-2 text-2xl font-bold text-neutral-100">{totals.overdueCount}</p>
+            <p className="mt-1 text-xs text-neutral-400">Residents needing follow-up</p>
+          </Card>
         </div>
 
-        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-sm text-neutral-500">
-            {isLoading
-              ? "Loading owner data…"
-              : `${residents.length} residents · ${rooms.length} rooms · ${fees.length} fees`}
-            {usingFallback && !isLoading && (
-              <span className="ml-2 rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-800">
-                offline preview
-              </span>
-            )}
-          </p>
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="flex gap-2" role="group" aria-label="Filter by status">
-              {(["", "PENDING", "PARTIAL", "PAID", "OVERDUE"] as const).map((s) => (
-                <button
-                  key={s || "all"}
-                  onClick={() => setStatusFilter(s)}
-                  aria-pressed={statusFilter === s}
-                  className={
-                    statusFilter === s
-                      ? "rounded-full bg-brand-ink px-3 py-1 text-xs font-semibold text-brand"
-                      : "rounded-full bg-neutral-100 px-3 py-1 text-xs font-medium text-neutral-600"
-                  }
-                >
-                  {s || "All"}
-                </button>
-              ))}
+        {/* Filter bar */}
+        <div className="mb-6 space-y-4 rounded-xl border border-neutral-800 bg-[#0d0d0d] p-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            {/* Status tabs */}
+            <div className="flex flex-wrap gap-1.5" role="group" aria-label="Filter by status">
+              {[
+                { label: "All Invoices", value: "" },
+                { label: "Pending", value: "PENDING" },
+                { label: "Partially Paid", value: "PARTIAL" },
+                { label: "Overdue", value: "OVERDUE" },
+                { label: "Paid", value: "PAID" },
+              ].map((tab) => {
+                const active = statusFilter === tab.value;
+                return (
+                  <button
+                    key={tab.value}
+                    onClick={() => setStatusFilter(tab.value)}
+                    className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
+                      active
+                        ? "bg-[#C3FF7D] text-[#010101] shadow-sm"
+                        : "bg-neutral-900 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200"
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                );
+              })}
             </div>
-            <Button
-              variant="outline"
-              onClick={() => void handleGenerateMonthly()}
-              loading={isGenerating}
-              disabled={!hostelId}
-              title={hostelId ? "POST /fees/generate-monthly" : "Link a hostel first"}
-            >
-              Generate Monthly Fees
-            </Button>
+
+            {/* Actions: Sync Overdue & Generate Monthly */}
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void handleSyncOverdue()}
+                loading={isSyncingOverdue}
+                disabled={!hostelId}
+                className="border-neutral-700 text-neutral-300 hover:bg-neutral-800"
+                title="Evaluate due dates and mark overdue invoices"
+              >
+                <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+                Sync Overdue
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => void handleGenerateMonthly()}
+                loading={isGenerating}
+                disabled={!hostelId}
+                className="bg-[#C3FF7D] font-semibold text-[#010101] hover:bg-[#b0f562]"
+              >
+                Generate Monthly Fees
+              </Button>
+            </div>
+          </div>
+
+          {/* Secondary filter row: Search, Month, Year */}
+          <div className="grid gap-3 pt-2 sm:grid-cols-3">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-500" />
+              <input
+                type="text"
+                placeholder="Search by student name or room number..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="h-9 w-full rounded-lg border border-neutral-800 bg-neutral-900 pl-9 pr-3 text-xs text-neutral-200 placeholder-neutral-500 focus:border-[#C3FF7D] focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <select
+                aria-label="Filter by month"
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(e.target.value)}
+                className="h-9 w-full rounded-lg border border-neutral-800 bg-neutral-900 px-3 text-xs text-neutral-200 focus:border-[#C3FF7D] focus:outline-none"
+              >
+                <option value="">All Months</option>
+                {MONTH_NAMES.map((m, idx) => (
+                  <option key={m} value={String(idx + 1)}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <select
+                aria-label="Filter by year"
+                value={selectedYear}
+                onChange={(e) => setSelectedYear(e.target.value)}
+                className="h-9 w-full rounded-lg border border-neutral-800 bg-neutral-900 px-3 text-xs text-neutral-200 focus:border-[#C3FF7D] focus:outline-none"
+              >
+                <option value="">All Years</option>
+                {[2024, 2025, 2026, 2027].map((yr) => (
+                  <option key={yr} value={String(yr)}>
+                    {yr}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
 
-        {paying && (
-          <Card className="mb-4 border-brand-ink p-5">
-            <form onSubmit={handleRecordPayment} className="grid gap-4 sm:grid-cols-4" noValidate>
-              <Input
-                label="Amount (Rs.)"
-                type="number"
-                value={payAmount}
-                onChange={(e) => setPayAmount(e.target.value)}
-                required
-              />
-              <div>
-                <label
-                  htmlFor="fee-pay-method"
-                  className="mb-1.5 block text-[13px] font-medium text-neutral-800"
-                >
-                  Method
-                </label>
-                <select
-                  id="fee-pay-method"
-                  value={payMethod}
-                  onChange={(e) => setPayMethod(e.target.value)}
-                  className={selectClass}
-                >
-                  <option value="CASH">Cash</option>
-                  <option value="ESEWA">eSewa</option>
-                  <option value="KHALTI">Khalti</option>
-                  <option value="BANK">Bank</option>
-                </select>
-              </div>
-              <div>
-                <label
-                  htmlFor="fee-pay-status"
-                  className="mb-1.5 block text-[13px] font-medium text-neutral-800"
-                >
-                  Status
-                </label>
-                <select
-                  id="fee-pay-status"
-                  value={payStatus}
-                  onChange={(e) => setPayStatus(e.target.value as BackendFeeStatus | "AUTO")}
-                  className={selectClass}
-                >
-                  <option value="AUTO">
-                    Auto ({previewStatus(paying, Number(payAmount) || 0)})
-                  </option>
-                  {FEE_STATUS_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-                <p className="mt-1 text-xs text-neutral-400">
-                  Auto derives status from paid vs payable; pick a value to override.
-                </p>
-              </div>
-              <div className="flex justify-end gap-2 sm:col-span-4">
-                <Button
-                  variant="outline"
-                  type="button"
-                  onClick={() => setPaying(null)}
-                  disabled={isPaying}
-                >
-                  Cancel
-                </Button>
-                <Button type="submit" loading={isPaying}>
-                  Save payment
-                </Button>
-              </div>
-            </form>
-            {payError && (
-              <p
-                role="alert"
-                className="mt-3 rounded-md bg-red-50 px-3 py-2 text-[13px] text-red-700"
-              >
-                {payError} — check DevTools Network: PATCH /fees/{paying.id}/payment must return 200
-                with the updated Fee.
-              </p>
-            )}
-          </Card>
-        )}
-
+        {/* Table / Content */}
         {isLoading ? (
           <TableSkeleton rows={6} />
         ) : fees.length === 0 ? (
           <EmptyState
-            title={hostelId ? "No fees yet" : "No hostel linked"}
+            title={hostelId ? "No invoices found" : "No hostel linked"}
             description={
               hostelId
                 ? loadError
-                  ? `Backend ledger failed to load: ${loadError} — check DevTools Network for GET /fees/hostels/${hostelId}.`
-                  : `No bills found for this hostel yet. Click "Generate Monthly Fees" to run POST /fees/generate-monthly { hostelId: "${hostelId ?? ""}" } for your ${residents.length} residents, then record payments per row.`
-                : "Link your account to a hostel to see its ledger."
+                  ? `Backend ledger failed to load: ${loadError}`
+                  : "No bills match the selected status or date filters. Click 'Generate Monthly Fees' to bill your active residents."
+                : "Link your account to a hostel to see its financial ledger."
             }
             action={
               hostelId && !loadError ? (
@@ -717,43 +725,86 @@ export default function FeesPage() {
             columns={columns}
             rows={fees}
             rowKey={(row) => row.id}
-            searchableKeys={["residentName", "roomNumber", "residentId"]}
-            searchPlaceholder="Search fees…"
+            searchableKeys={["residentName", "roomNumber", "invoiceNumber"]}
+            searchPlaceholder="Filter listed invoices…"
             mobileCard={(f) => (
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="font-semibold">{f.residentName}</p>
-                  <p className="text-xs text-neutral-500">
-                    Room {f.roomNumber || "—"} · {formatCurrency(f.amount)}
+                  <p className="font-semibold text-neutral-100">{f.residentName}</p>
+                  <p className="text-xs text-neutral-400">
+                    Room {f.roomNumber || "—"} · Payable:{" "}
+                    {formatCurrency(f.totalPayable ?? f.amount)}
                   </p>
+                  {Number(f.outstandingAmount ?? 0) > 0 && (
+                    <p className="text-xs font-medium text-amber-400">
+                      Due: {formatCurrency(Number(f.outstandingAmount))}
+                    </p>
+                  )}
                 </div>
-                <Badge tone={statusTone(f.status)}>{f.status}</Badge>
+                <div className="flex flex-col items-end gap-1.5">
+                  <Badge
+                    tone={
+                      f.status === "PAID"
+                        ? "success"
+                        : f.status === "OVERDUE"
+                          ? "danger"
+                          : "warning"
+                    }
+                  >
+                    {f.status}
+                  </Badge>
+                  {f.status !== "PAID" && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setRecordPaymentFee(f)}
+                      className="h-7 border-[#C3FF7D]/30 py-1 text-xs text-[#C3FF7D]"
+                    >
+                      Pay
+                    </Button>
+                  )}
+                </div>
               </div>
             )}
           />
         )}
 
-        {/* Resident QR receipts — review proof, approve flips fee to PAID */}
-        <div className="mt-6">
+        {/* Resident QR receipts review section */}
+        <div className="mt-8">
           <PaymentProofReview
             proofs={proofs}
             isLoading={proofsLoading}
             onChanged={() => {
               void refetchProofs();
-              if (hostelId) {
-                void refreshFees(hostelId, statusFilter || undefined)
-                  .then((rows) => setServerFees(rows))
-                  .catch(() => undefined);
-              }
+              void loadData();
             }}
           />
           {pendingCount === 0 && proofs.length === 0 && (
             <p className="mt-2 text-xs text-neutral-400">
-              No receipts yet — residents upload QR payment screenshots from My Payments → Upload
-              receipt.
+              No pending QR receipt approvals. When residents upload transfer screenshots, they will
+              appear here for verification.
             </p>
           )}
         </div>
+
+        {/* Modals */}
+        <RecordCashPaymentModal
+          open={Boolean(recordPaymentFee)}
+          onClose={() => setRecordPaymentFee(null)}
+          fee={recordPaymentFee}
+          hostelName={user?.hostelName ?? "Hostel Ghar"}
+          onSuccess={() => {
+            setRecordPaymentFee(null);
+            void loadData();
+          }}
+        />
+
+        <ReceiptModal
+          open={Boolean(viewReceipt)}
+          onClose={() => setViewReceipt(null)}
+          data={viewReceipt}
+          hostelName={user?.hostelName ?? "Hostel Ghar"}
+        />
       </Protected>
     </DashboardShell>
   );

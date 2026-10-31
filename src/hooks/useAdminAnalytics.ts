@@ -12,7 +12,9 @@ import type { Hostel } from "@/types/hostel";
 
 export interface AdminAnalyticsFilters {
   hostelId: string;
-  range: "30d" | "3m" | "6m" | "1y";
+  range: "today" | "7d" | "30d" | "3m" | "6m" | "1y" | "custom";
+  customStartDate?: string;
+  customEndDate?: string;
 }
 
 interface AdminAnalyticsState {

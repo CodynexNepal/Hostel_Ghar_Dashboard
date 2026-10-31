@@ -147,9 +147,13 @@ export default function InvoicesPage() {
   const columns: Column<Invoice>[] = [
     {
       key: "id",
-      header: "Invoice",
+      header: "Invoice #",
       sortable: true,
-      render: (r) => <span className="font-semibold">{String(r.id)}</span>,
+      render: (r) => (
+        <span className="font-mono font-semibold text-neutral-100">
+          {(r.invoiceNumber as string) || `INV-${String(r.id).slice(0, 8)}`}
+        </span>
+      ),
     },
     {
       key: "resident",
@@ -171,8 +175,8 @@ export default function InvoicesPage() {
           (rid ? (residentEmailById.get(rid) ?? "") : "");
         return (
           <span>
-            <span className="block font-medium">{name}</span>
-            <span className="block text-xs text-neutral-500">
+            <span className="block font-medium text-neutral-100">{name}</span>
+            <span className="block text-xs text-neutral-400">
               {email || "no email"} · {invoiceMonthLabel(r.billingMonth, r.billingYear)}
             </span>
           </span>
@@ -181,19 +185,36 @@ export default function InvoicesPage() {
     },
     {
       key: "amount",
-      header: "Amount",
+      header: "Payable / Outstanding",
       sortable: true,
-      render: (r) => (
-        <span className="font-bold">{formatCurrency(Number(r.amount ?? r.totalPayable ?? 0))}</span>
-      ),
+      render: (r) => {
+        const total = Number(r.totalPayable ?? r.amount ?? 0);
+        const paid = Number(r.paidAmount ?? 0);
+        const outstanding =
+          r.outstandingAmount !== undefined
+            ? Number(r.outstandingAmount)
+            : Math.max(0, total - paid);
+        return (
+          <div>
+            <span className="font-bold text-neutral-100">{formatCurrency(total)}</span>
+            {outstanding > 0 && paid > 0 && (
+              <span className="block text-xs font-medium text-amber-400">
+                Due: {formatCurrency(outstanding)}
+              </span>
+            )}
+          </div>
+        );
+      },
     },
     {
       key: "status",
       header: "Status",
       sortable: true,
-      render: (r) => (
-        <Badge tone={statusTone(String(r.status ?? "DRAFT"))}>{String(r.status ?? "DRAFT")}</Badge>
-      ),
+      render: (r) => {
+        const st = String(r.status ?? "PENDING").toUpperCase();
+        const display = st === "PARTIALLY_PAID" ? "PARTIAL" : st;
+        return <Badge tone={statusTone(display)}>{display}</Badge>;
+      },
     },
   ];
   return (

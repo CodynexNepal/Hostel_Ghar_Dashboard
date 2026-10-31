@@ -371,10 +371,12 @@ export default function FeesPage() {
       sortable: true,
       render: (f) => (
         <div>
-          <span className="font-mono text-xs font-semibold text-neutral-200">
+          <span className="font-mono text-xs font-bold text-neutral-900">
             {f.invoiceNumber || `INV-${f.id.slice(0, 8)}`}
           </span>
-          <span className="block text-[11px] text-neutral-500">{f.feeType || "MONTHLY_FEE"}</span>
+          <span className="block text-[11px] font-semibold text-neutral-600">
+            {f.feeType || "MONTHLY_FEE"}
+          </span>
         </div>
       ),
     },
@@ -384,8 +386,10 @@ export default function FeesPage() {
       sortable: true,
       render: (f) => (
         <div>
-          <span className="block font-medium text-neutral-100">{f.residentName}</span>
-          <span className="block text-xs text-neutral-400">Room {f.roomNumber || "—"}</span>
+          <span className="block font-bold text-neutral-900">{f.residentName}</span>
+          <span className="block text-xs font-semibold text-neutral-600">
+            Room {f.roomNumber || "—"}
+          </span>
         </div>
       ),
     },
@@ -402,27 +406,25 @@ export default function FeesPage() {
         return (
           <div className="min-w-[140px]">
             <div className="flex items-baseline justify-between">
-              <span className="font-bold text-neutral-100">{formatCurrency(total)}</span>
-              <span className="text-xs text-neutral-400">{progress}%</span>
+              <span className="font-bold text-neutral-900">{formatCurrency(total)}</span>
+              <span className="text-xs font-bold text-neutral-700">{progress}%</span>
             </div>
-            <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-neutral-800">
+            <div className="mt-1 h-2 w-full overflow-hidden rounded-full bg-neutral-200">
               <div
                 className={`h-full rounded-full transition-all duration-300 ${
                   f.status === "PAID"
-                    ? "bg-[#C3FF7D]"
+                    ? "bg-emerald-600"
                     : f.status === "OVERDUE"
-                      ? "bg-rose-500"
-                      : "bg-amber-400"
+                      ? "bg-rose-600"
+                      : "bg-amber-500"
                 }`}
                 style={{ width: `${progress}%` }}
               />
             </div>
-            <div className="mt-1 flex items-center justify-between text-[11px] text-neutral-400">
+            <div className="mt-1 flex items-center justify-between text-[11px] font-semibold text-neutral-600">
               <span>Paid: {formatCurrency(paid)}</span>
               {outstanding > 0 && (
-                <span className="font-semibold text-amber-400">
-                  Due: {formatCurrency(outstanding)}
-                </span>
+                <span className="font-bold text-rose-600">Due: {formatCurrency(outstanding)}</span>
               )}
             </div>
           </div>
@@ -434,7 +436,7 @@ export default function FeesPage() {
       header: "Billing Period",
       sortable: true,
       render: (f) => (
-        <span className="text-xs font-medium text-neutral-300">
+        <span className="text-xs font-bold text-neutral-800">
           {billingLabel(f.billingMonth, f.billingYear)}
         </span>
       ),
@@ -444,7 +446,9 @@ export default function FeesPage() {
       header: "Due Date",
       sortable: true,
       render: (f) => (
-        <span className="text-xs text-neutral-300">{f.dueDate ? formatDate(f.dueDate) : "—"}</span>
+        <span className="text-xs font-semibold text-neutral-700">
+          {f.dueDate ? formatDate(f.dueDate) : "—"}
+        </span>
       ),
     },
     {
@@ -489,7 +493,7 @@ export default function FeesPage() {
                   billingYear: f.billingYear,
                 });
               }}
-              className="inline-flex items-center gap-1 rounded bg-neutral-800 px-2 py-1 text-[11px] font-medium text-[#C3FF7D] hover:bg-neutral-700"
+              className="inline-flex items-center gap-1 rounded bg-neutral-900 px-2.5 py-1 text-[11px] font-bold text-[#C3FF7D] shadow-sm hover:bg-neutral-800"
               title="View latest payment receipt"
             >
               <FileText className="h-3 w-3" />
@@ -504,7 +508,7 @@ export default function FeesPage() {
           );
         }
 
-        return <span className="text-xs text-neutral-500">—</span>;
+        return <span className="text-xs font-semibold text-neutral-500">—</span>;
       },
     },
     {
@@ -519,8 +523,8 @@ export default function FeesPage() {
             disabled={f.status === "PAID"}
             className={
               f.status === "PAID"
-                ? "opacity-50"
-                : "border-[#C3FF7D]/30 text-[#C3FF7D] hover:bg-[#C3FF7D]/10"
+                ? "border-neutral-200 bg-neutral-50 text-neutral-400 opacity-60"
+                : "border-brand-ink bg-neutral-900 font-bold text-[#C3FF7D] shadow-sm hover:bg-neutral-800"
             }
           >
             {f.status === "PAID" ? "Settled" : "Record Payment"}
@@ -730,13 +734,13 @@ export default function FeesPage() {
             mobileCard={(f) => (
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="font-semibold text-neutral-100">{f.residentName}</p>
-                  <p className="text-xs text-neutral-400">
+                  <p className="font-bold text-neutral-900">{f.residentName}</p>
+                  <p className="text-xs font-semibold text-neutral-600">
                     Room {f.roomNumber || "—"} · Payable:{" "}
                     {formatCurrency(f.totalPayable ?? f.amount)}
                   </p>
                   {Number(f.outstandingAmount ?? 0) > 0 && (
-                    <p className="text-xs font-medium text-amber-400">
+                    <p className="text-xs font-bold text-rose-600">
                       Due: {formatCurrency(Number(f.outstandingAmount))}
                     </p>
                   )}

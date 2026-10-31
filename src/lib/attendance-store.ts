@@ -23,14 +23,33 @@ export function notifyAttendanceChanged(): void {
  * (/resident/attendance, /owner/attendance, or /resident/attendance/check-in/out).
  */
 export function normalizeRecord(raw: unknown): AttendanceRecord | null {
-  const r = (raw ?? {}) as Record<string, unknown>;
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
   const str = (v: unknown, fb = ""): string =>
     typeof v === "string" ? v : v === undefined || v === null ? fb : String(v);
 
-  const checkInAt = str(r.checkInAt ?? r.check_in_at ?? r.createdAt);
+  const checkInAt =
+    str(
+      r.checkInAt ??
+        r.check_in_at ??
+        r.checkInTime ??
+        r.check_in_time ??
+        r.checkIn ??
+        r.check_in ??
+        r.createdAt ??
+        r.created_at ??
+        r.timestamp ??
+        r.updatedAt ??
+        r.updated_at
+    ) || (r.id || r.residentId || r.checkOutAt || r.check_out_at ? new Date().toISOString() : "");
+
   if (!checkInAt) return null;
 
-  const outRaw = (r.checkOutAt ?? r.check_out_at ?? null) as unknown;
+  const outRaw = (r.checkOutAt ??
+    r.check_out_at ??
+    r.checkOutTime ??
+    r.check_out_time ??
+    null) as unknown;
   const checkOutAt = typeof outRaw === "string" && outRaw ? outRaw : null;
   const date = str(r.date ?? r.day ?? "") || dayKeyLocal(new Date(checkInAt));
 

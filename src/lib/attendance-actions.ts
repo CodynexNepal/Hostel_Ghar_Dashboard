@@ -6,7 +6,12 @@
 import axios from "axios";
 import api, { getHostelId } from "./axios";
 import { toPaginated } from "./hostelGhar";
-import { type AttendanceIdentity, type AttendanceRecord } from "./attendance-types";
+import {
+  attendanceIdFor,
+  dayKeyLocal,
+  type AttendanceIdentity,
+  type AttendanceRecord,
+} from "./attendance-types";
 import { normalizeRecord, notifyAttendanceChanged } from "./attendance-store";
 
 const PREFIX = "/v1/hostel-ghar";
@@ -63,11 +68,16 @@ async function tryBackend(
       return { outcome: "unavailable", message: "Network connection error." };
     }
     const status = err.response?.status ?? 0;
-    const payload = err.response?.data;
+    const payload = err.response?.data as Record<string, unknown> | undefined;
+    const rawMsg = payload?.message;
     const message =
-      typeof (payload as Record<string, unknown> | undefined)?.message === "string"
-        ? (payload as { message: string }).message
-        : undefined;
+      typeof rawMsg === "string"
+        ? rawMsg
+        : Array.isArray(rawMsg)
+          ? rawMsg.join(", ")
+          : typeof payload?.error === "string"
+            ? (payload.error as string)
+            : undefined;
 
     // 409 Conflict: already checked in / already checked out
     if (status === 409) {
@@ -160,10 +170,25 @@ export async function checkIn(
 
   const attempt = await tryBackend("check-in", body);
 
-  if (attempt.outcome === "saved" && attempt.record) {
+  if (attempt.outcome === "saved") {
     invalidateAttendanceCache();
     notifyAttendanceChanged();
-    return attempt.record;
+    return (
+      attempt.record ?? {
+        id: attendanceIdFor(identity),
+        residentId: identity.residentId,
+        residentName: identity.residentName,
+        residentEmail: identity.residentEmail,
+        hostelId: identity.hostelId,
+        date: dayKeyLocal(),
+        checkInAt: new Date().toISOString(),
+        checkOutAt: null,
+        status: "CHECKED_IN",
+        source: "backend",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }
+    );
   }
 
   if (attempt.outcome === "conflict") {
@@ -210,10 +235,25 @@ export async function checkOut(
 
   const attempt = await tryBackend("check-out", body);
 
-  if (attempt.outcome === "saved" && attempt.record) {
+  if (attempt.outcome === "saved") {
     invalidateAttendanceCache();
     notifyAttendanceChanged();
-    return attempt.record;
+    return (
+      attempt.record ?? {
+        id: attendanceIdFor(identity),
+        residentId: identity.residentId,
+        residentName: identity.residentName,
+        residentEmail: identity.residentEmail,
+        hostelId: identity.hostelId,
+        date: dayKeyLocal(),
+        checkInAt: new Date().toISOString(),
+        checkOutAt: new Date().toISOString(),
+        status: "CHECKED_OUT",
+        source: "backend",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }
+    );
   }
 
   if (attempt.outcome === "conflict") {

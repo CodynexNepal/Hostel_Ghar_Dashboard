@@ -73,24 +73,24 @@ export function DataTable<T>({
           placeholder={searchPlaceholder}
           className="h-9 w-full rounded-md border border-surface-border bg-surface-muted px-3 text-sm outline-none placeholder:text-neutral-400 focus:border-brand-ink focus:bg-white sm:max-w-xs"
         />
-        <p className="text-xs text-neutral-500" role="status">
+        <p className="text-xs font-semibold text-neutral-700" role="status">
           {filtered.length} results
         </p>
       </div>
       <div className="hidden overflow-x-auto md:block">
         <table className="w-full min-w-[720px] text-left text-sm">
           <thead>
-            <tr className="border-b border-surface-border bg-surface-muted/60 text-xs uppercase tracking-wide text-neutral-500">
+            <tr className="border-b border-surface-border bg-surface-muted text-xs font-bold uppercase tracking-wider text-neutral-800">
               {columns.map((c) => (
-                <th key={c.key} scope="col" className="px-5 py-3 font-medium">
+                <th key={c.key} scope="col" className="px-5 py-3 font-bold text-neutral-800">
                   {c.sortable ? (
                     <button
                       onClick={() => toggleSort(c.key)}
-                      className="inline-flex items-center gap-1 hover:text-neutral-900"
+                      className="inline-flex items-center gap-1.5 font-bold text-neutral-800 transition-colors hover:text-neutral-950"
                       aria-label={`Sort by ${c.header}`}
                     >
                       {c.header}
-                      <span aria-hidden className="text-neutral-400">
+                      <span aria-hidden className="font-bold text-neutral-600">
                         {sortKey === c.key ? (sortDir === 1 ? "↑" : "↓") : "↕"}
                       </span>
                     </button>
@@ -105,7 +105,7 @@ export function DataTable<T>({
             {pageRows.map((row) => (
               <tr key={rowKey(row)} className="transition-colors hover:bg-surface-muted/50">
                 {columns.map((c) => (
-                  <td key={c.key} className="px-5 py-3.5 text-neutral-800">
+                  <td key={c.key} className="px-5 py-3.5 text-neutral-900">
                     {c.render(row)}
                   </td>
                 ))}
@@ -115,7 +115,7 @@ export function DataTable<T>({
               <tr>
                 <td
                   colSpan={columns.length}
-                  className="px-5 py-10 text-center text-sm text-neutral-500"
+                  className="px-5 py-10 text-center text-sm font-medium text-neutral-600"
                 >
                   No results found.
                 </td>
@@ -133,11 +133,13 @@ export function DataTable<T>({
           ) : null
         )}
         {pageRows.length === 0 && (
-          <p className="px-4 py-10 text-center text-sm text-neutral-500">No results found.</p>
+          <p className="px-4 py-10 text-center text-sm font-medium text-neutral-600">
+            No results found.
+          </p>
         )}
       </div>
       <div className="flex items-center justify-between gap-2 border-t border-surface-border px-4 py-3 sm:px-5">
-        <p className="text-xs text-neutral-500">
+        <p className="text-xs font-semibold text-neutral-700">
           Page {safePage} of {totalPages}
         </p>
         <div className="flex items-center gap-1">

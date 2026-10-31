@@ -150,7 +150,7 @@ export default function InvoicesPage() {
       header: "Invoice #",
       sortable: true,
       render: (r) => (
-        <span className="font-mono font-semibold text-neutral-100">
+        <span className="font-mono text-xs font-bold text-neutral-900">
           {(r.invoiceNumber as string) || `INV-${String(r.id).slice(0, 8)}`}
         </span>
       ),
@@ -175,8 +175,8 @@ export default function InvoicesPage() {
           (rid ? (residentEmailById.get(rid) ?? "") : "");
         return (
           <span>
-            <span className="block font-medium text-neutral-100">{name}</span>
-            <span className="block text-xs text-neutral-400">
+            <span className="block font-bold text-neutral-900">{name}</span>
+            <span className="block text-xs font-semibold text-neutral-600">
               {email || "no email"} · {invoiceMonthLabel(r.billingMonth, r.billingYear)}
             </span>
           </span>
@@ -196,9 +196,9 @@ export default function InvoicesPage() {
             : Math.max(0, total - paid);
         return (
           <div>
-            <span className="font-bold text-neutral-100">{formatCurrency(total)}</span>
+            <span className="font-bold text-neutral-900">{formatCurrency(total)}</span>
             {outstanding > 0 && paid > 0 && (
-              <span className="block text-xs font-medium text-amber-400">
+              <span className="block text-xs font-bold text-rose-600">
                 Due: {formatCurrency(outstanding)}
               </span>
             )}
@@ -221,7 +221,7 @@ export default function InvoicesPage() {
     <DashboardShell title="Invoices" subtitle="Hostel Ghar / Finance / Invoices">
       <Protected permission="MANAGE_INVOICES" redirectTo="/fees">
         <div className="mb-4 flex items-center justify-between">
-          <p className="text-sm text-neutral-500">
+          <p className="text-sm font-medium text-neutral-700">
             {isLoading
               ? "Loading invoices…"
               : hostelId
@@ -264,10 +264,10 @@ export default function InvoicesPage() {
             mobileCard={(r) => (
               <div className="flex items-center gap-3">
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-semibold">
+                  <span className="block truncate text-sm font-bold text-neutral-900">
                     {String(r.residentName ?? r.id)}
                   </span>
-                  <span className="block text-xs text-neutral-500">
+                  <span className="block text-xs font-semibold text-neutral-600">
                     {String(r.id)} · {formatCurrency(Number(r.amount ?? 0))}
                   </span>
                 </span>

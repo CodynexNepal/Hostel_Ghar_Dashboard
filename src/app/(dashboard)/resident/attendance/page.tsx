@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { SlideToAction } from "@/components/attendance/SlideToAction";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/useToast";
+import { getHostelId } from "@/lib/axios";
 import { useMyRoomSummary } from "@/hooks/useMyRoomSummary";
 import { useMyAttendance } from "@/lib/useAttendance";
 import { checkIn, checkOut } from "@/lib/attendance-actions";
@@ -16,6 +17,7 @@ import {
   durationLabel,
   formatTimeOfDay,
   type AttendanceIdentity,
+  type AttendanceRecord,
 } from "@/lib/attendance-types";
 import { formatDate } from "@/lib/utils";
 
@@ -31,8 +33,8 @@ export default function ResidentAttendancePage() {
       residentId: user.id,
       residentName: user.name || "Resident",
       residentEmail: user.email,
-      hostelId: room.hostelId,
-      hostelName: room.hostelName,
+      hostelId: room.hostelId || user.hostelId || getHostelId() || null,
+      hostelName: room.hostelName || user.hostelName || "Hostel",
       roomNumber: room.myRoom?.roomNumber ? String(room.myRoom.roomNumber) : undefined,
       bedNumber: room.myRoom?.bedNumber ? String(room.myRoom.bedNumber) : undefined,
     };
@@ -48,20 +50,34 @@ export default function ResidentAttendancePage() {
     }
     setBusy(true);
     try {
-      const res = nextAction === "CHECK_IN" ? await checkIn(identity) : await checkOut(identity);
-      if (typeof (res as { checkInAt?: unknown }).checkInAt === "string") {
-        const done = res as { checkInAt: string; checkOutAt: string | null };
+      const isCheckIn = nextAction === "CHECK_IN";
+      const res = isCheckIn ? await checkIn(identity) : await checkOut(identity);
+
+      if ("reason" in res && typeof (res as { reason?: unknown }).reason === "string") {
+        const errObj = res as { reason: string; message?: unknown };
+        const errMsg = typeof errObj.message === "string" ? errObj.message : "";
+        if (errObj.reason === "ALREADY_CHECKED_IN" || errObj.reason === "ALREADY_CHECKED_OUT") {
+          await refresh();
+          success(isCheckIn ? "Already checked in" : "Already checked out", errMsg || undefined);
+        } else {
+          toastError(
+            isCheckIn ? "Could not check in" : "Could not check out",
+            errMsg || "Please check your connection and try again."
+          );
+        }
+      } else {
+        const record = res as AttendanceRecord;
+        const timeStr = isCheckIn
+          ? formatTimeOfDay(record.checkInAt)
+          : formatTimeOfDay(record.checkOutAt || record.checkInAt);
         success(
-          nextAction === "CHECK_IN" ? "Checked in" : "Checked out",
-          nextAction === "CHECK_IN"
-            ? `In at ${formatTimeOfDay(done.checkInAt)}.`
-            : `Out at ${formatTimeOfDay(done.checkOutAt)}.`
+          isCheckIn ? "Checked in successfully" : "Checked out successfully",
+          isCheckIn ? `Check-in recorded at ${timeStr}.` : `Check-out recorded at ${timeStr}.`
         );
         await refresh();
-      } else {
-        const err = res as { message?: string };
-        toastError("Not recorded", typeof err.message === "string" ? err.message : undefined);
       }
+    } catch (err: unknown) {
+      toastError("Action failed", err instanceof Error ? err.message : "Something went wrong.");
     } finally {
       setBusy(false);
     }
